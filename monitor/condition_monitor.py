@@ -449,15 +449,30 @@ class CompositeConditionMonitor:
 
     def restore_state(self, state_data: dict):
         """恢复状态"""
-        # 简单策略：尝试恢复第一个监控器
-        # 如果是终态，则直接设置状态
-        # 如果是IN_PROGRESS，这可能不准确，但在没有更多信息的情况下只能如此
+        if not state_data:
+            return
+            
+        # 根据缓存的描述或名称，尝试精确恢复对应的子监控器
+        cached_desc = state_data.get('description', '')
+        cached_name = state_data.get('name', '')
+        
+        target_monitor = None
         for monitor in self.monitors:
-            monitor.restore_state(state_data)
-            if monitor.state != ConditionState.NOT_STARTED:
-                self.active_monitor = monitor
-                self.state = monitor.state
-                # 如果找到一个非未开始的状态，就使用它（优先匹配）
+            # 如果缓存中的描述匹配了特定的子工况，或者是名称匹配了
+            if (cached_desc and monitor.condition.description == cached_desc) or \
+               (cached_name and monitor.condition.condition_name == cached_name):
+                target_monitor = monitor
+                break
+                
+        # 如果找不到精确匹配，使用第一个
+        if not target_monitor and self.monitors:
+            target_monitor = self.monitors[0]
+            
+        if target_monitor:
+            target_monitor.restore_state(state_data)
+            if target_monitor.state != ConditionState.NOT_STARTED:
+                self.active_monitor = target_monitor
+                self.state = target_monitor.state
                 return
         
         # 如果所有都是未开始，重置

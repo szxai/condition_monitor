@@ -1,0 +1,16 @@
+# 字节码
+__pycache__/
+*.pyc
+
+# 虚拟环境
+examples/
+logs/
+gps_logs/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+
+# 其他
+.DS_Store

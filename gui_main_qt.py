@@ -15,7 +15,7 @@ from PyQt5.QtGui import QFont, QColor, QIcon, QPen, QBrush, QPolygonF
 
 # Import existing system
 from main import ConditionMonitorSystem
-from models.condition import ConditionState
+from monitor.condition_monitor import ConditionState
 from models.gps_data import GPSData
 from monitor.condition_monitor import CompositeConditionMonitor
 from utils.logger import setup_logger
@@ -513,29 +513,30 @@ class MainWindow(QMainWindow):
         
         # 确定需要绘制的区域
         tm = self.system.task_manager
+        # 如果未锁定，绘制所有候选区域，必须去除重复坐标
+        target_conditions = []
+        seen_coords = set()
+        if cond_list:
+            # 兼容单个和列表情况
+            conds_iterable = cond_list if isinstance(cond_list, list) else [cond_list]
+            for c in conds_iterable:
+                if c:
+                    # 使用完整坐标作为去重键
+                    coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                    if coord_key not in seen_coords:
+                        seen_coords.add(coord_key)
+                        target_conditions.append(c)
+
+        # 锁定区域单独处理
         active_cond = None
         if tm.current_monitor and isinstance(tm.current_monitor, CompositeConditionMonitor):
-            # 获取内部实际正在执行的子监控器（包含 TW-1, TW-2 等）
             inner_monitor = tm.current_monitor.active_monitor
             has_laps = inner_monitor and inner_monitor.completed_laps > 0
             if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
                 active_cond = inner_monitor.condition
-        
-        # 如果已经锁定了某个区域，就只聚焦那个区域
+
         if active_cond:
-             target_conditions = [active_cond]
-        else:
-             # 否则，考虑所有候选区域
-             target_conditions = []
-             seen_coords = set()
-             if cond_list:
-                 for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
-                     if c:
-                         # 提高精度，或者直接比较完整坐标
-                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
-                         if coord_key not in seen_coords:
-                             seen_coords.add(coord_key)
-                             target_conditions.append(c)
+            target_conditions = [active_cond]
 
         if not target_conditions and cond_list:
             target_conditions = cond_list if isinstance(cond_list, list) else [cond_list]
@@ -594,30 +595,29 @@ class MainWindow(QMainWindow):
         
         # 确定需要绘制的区域
         tm = self.system.task_manager
+        
+        # 如果未锁定，绘制所有候选区域，必须去除重复坐标
+        target_conditions = []
+        seen_coords = set()
+        if cond_list:
+            conds_iterable = cond_list if isinstance(cond_list, list) else [cond_list]
+            for c in conds_iterable:
+                if c:
+                    # 使用完整坐标作为去重键
+                    coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                    if coord_key not in seen_coords:
+                        seen_coords.add(coord_key)
+                        target_conditions.append(c)
+
         active_cond = None
         if tm.current_monitor and isinstance(tm.current_monitor, CompositeConditionMonitor):
-            # 获取内部实际正在执行的子监控器（包含 TW-1, TW-2 等）
             inner_monitor = tm.current_monitor.active_monitor
-            # 修改锁定判定：只要 active_monitor 存在（即使状态是 NOT_STARTED 并且刚初始化），也应被视为当前焦点，但这会导致没选时就锁定
-            # 所以正确的逻辑是：只有当状态明确为进行中/完成等，或者已经有圈数时，才锁定
             has_laps = inner_monitor and inner_monitor.completed_laps > 0
             if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
                 active_cond = inner_monitor.condition
                 
         if active_cond:
              target_conditions = [active_cond]
-        else:
-             # 如果未锁定，绘制所有候选区域，必须去除重复坐标
-             target_conditions = []
-             seen_coords = set()
-             if cond_list:
-                 for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
-                     if c:
-                         # 提高精度，或者直接比较完整坐标
-                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
-                         if coord_key not in seen_coords:
-                             seen_coords.add(coord_key)
-                             target_conditions.append(c)
 
         # 兜底：如果 target_conditions 为空，退回到尝试画所有
         if not target_conditions:

@@ -1,6 +1,6 @@
 {
   "gps": {
-    "mode": "usb",
+    "mode": "csv",
     "port": "/dev/ttyACM0",
     "baudrate": 115200,
     "csv_file": "examples/gpsdata_examples/16hz_sampled/16hz_2025_11_27-18_12_20-1492-F-to-2025_11_27-19_21_18-2319-F.csv",

@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-13T03:04:33.186802Z",
+  "timestamp": "2026-03-24T08:34:32.513267Z",
   "event_type": "program_end",
   "current_task": {
-    "condition": "AS",
-    "description": "ABS湿滑路",
-    "task_id": "TASK-BNB-001",
+    "condition": "TW",
+    "description": "扭曲路2",
+    "task_id": "TASK-BNB-008",
     "state": "未开始",
     "start_time": null,
     "end_time": null,
@@ -44,9 +44,49 @@
       "condition": "AS",
       "description": "ABS湿滑路",
       "task_id": "TASK-BNB-001",
-      "state": "未开始",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:33:51.329726",
+      "duration_seconds": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 3,
+      "skip_reason": "用户手动跳过",
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
+    },
+    {
+      "condition": "MB",
+      "description": "中等比利时路",
+      "task_id": "TASK-BNB-002",
+      "state": "已跳过",
+      "start_time": null,
+      "end_time": "2026-03-24T16:33:54.160022",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
@@ -75,135 +115,216 @@
       "loop_zones": null,
       "laps_completed": 0,
       "required_laps": 1,
-      "skip_reason": null,
-      "failure_reason": null
-    },
-    {
-      "condition": "MB",
-      "description": "中等比利时路",
-      "task_id": "TASK-BNB-002",
-      "state": "未开始",
-      "state_display": "等待重试",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 1,
       "skip_reason": "用户手动跳过",
-      "failure_reason": null
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "CB",
       "description": "搓板路制动",
       "task_id": "TASK-BNB-003",
-      "state": "未开始",
-      "state_display": "等待重试",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:33:56.287628",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
       "required_laps": 1,
       "skip_reason": "用户手动跳过",
-      "failure_reason": null
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "P1",
       "description": "方坑1",
       "task_id": "TASK-BNB-004",
-      "state": "未开始",
-      "state_display": "未开始",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:33:58.496994",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
       "required_laps": 1,
-      "skip_reason": null,
-      "failure_reason": null
+      "skip_reason": "用户手动跳过",
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "EB",
       "description": "紧急制动",
       "task_id": "TASK-BNB-005",
-      "state": "未开始",
-      "state_display": "等待重试",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:34:01.805580",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
       "skip_reason": "用户手动跳过",
-      "failure_reason": null
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "PN",
       "description": "新比利时石块路",
       "task_id": "TASK-BNB-006",
-      "state": "未开始",
-      "state_display": "等待重试",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:34:04.738577",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
       "required_laps": 1,
       "skip_reason": "用户手动跳过",
-      "failure_reason": null
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "TS",
       "description": "TCS湿滑路",
       "task_id": "TASK-BNB-007",
-      "state": "未开始",
-      "state_display": "等待重试",
+      "state": "已跳过",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-03-24T16:34:09.476685",
       "duration_seconds": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 4,
       "skip_reason": "用户手动跳过",
-      "failure_reason": null
+      "failure_reason": null,
+      "result": "skipped",
+      "reason": "用户手动跳过"
     },
     {
       "condition": "TW",
-      "description": "扭曲路",
+      "description": "扭曲路2",
       "task_id": "TASK-BNB-008",
       "state": "未开始",
-      "state_display": "未开始",
       "start_time": null,
       "end_time": null,
       "duration_seconds": null,
@@ -211,7 +332,26 @@
       "max_speed_kmh": null,
       "min_speed_kmh": null,
       "distance_m": 0.0,
-      "checkpoints": [],
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "passed": false,
+          "passed_at": null
+        }
+      ],
       "loop_zones": null,
       "laps_completed": 0,
       "required_laps": 1,
@@ -394,7 +534,7 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
       "skip_reason": null,
       "failure_reason": null
     },
@@ -422,8 +562,8 @@
   "summary": {
     "total_tasks": 18,
     "completed_tasks": 0,
-    "pending_tasks": 18,
+    "pending_tasks": 11,
     "failed_tasks": 0,
-    "skipped_tasks": 0
+    "skipped_tasks": 7
   }
 }
