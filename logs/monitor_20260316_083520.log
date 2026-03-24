@@ -1,0 +1,5 @@
+2026-03-16 08:35:20,072 - ConditionMonitor - INFO - logger.py:61 - Logger initialized. Log file: logs\monitor_20260316_083520.log
+2026-03-16 08:35:20,104 - ConditionMonitor - INFO - gui_main_qt.py:163 - Initializing MainWindow
+2026-03-16 08:35:20,105 - ConditionMonitor - INFO - gui_main_qt.py:181 - Using config file: config/config.json
+2026-03-16 08:35:20,119 - ConditionMonitor - INFO - gps_reader.py:56 - Attempting to open USB serial port: /dev/ttyACM0 @ 115200
+2026-03-16 08:35:20,133 - ConditionMonitor - ERROR - gps_reader.py:69 - Failed to open USB port /dev/ttyACM0: could not open port '/dev/ttyACM0': FileNotFoundError(2, '系统找不到指定的路径。', None, 3)

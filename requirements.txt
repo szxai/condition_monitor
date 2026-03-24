@@ -1,0 +1,7 @@
+# Core dependencies
+pyserial>=3.5         # Serial communication for USB GPS
+PyQt5>=5.15.0         # GUI framework
+
+# Note for Linux users:
+# You may need to install system dependencies for PyQt5:
+# sudo apt-get install libxcb-xinerama0

@@ -1,0 +1,4 @@
+2026-03-13 14:52:14,137 - TestLogger - INFO - logger.py:61 - Logger initialized. Log file: logs\monitor_20260313_145214.log
+2026-03-13 14:52:14,139 - TestLogger - INFO - test_logger.py:14 - This is an info message
+2026-03-13 14:52:14,139 - TestLogger - WARNING - test_logger.py:15 - This is a warning message
+2026-03-13 14:52:14,140 - TestLogger - ERROR - test_logger.py:16 - This is an error message
