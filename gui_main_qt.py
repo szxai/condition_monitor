@@ -514,9 +514,13 @@ class MainWindow(QMainWindow):
         tm = self.system.task_manager
         active_cond = None
         if tm.current_monitor and isinstance(tm.current_monitor, CompositeConditionMonitor):
-            has_laps = tm.current_monitor.active_monitor and tm.current_monitor.active_monitor.completed_laps > 0
-            if tm.current_monitor.active_monitor and (tm.current_monitor.state != ConditionState.NOT_STARTED or has_laps):
-                active_cond = tm.current_monitor.active_monitor.condition
+            # 获取内部实际正在执行的子监控器（包含 TW-1, TW-2 等）
+            inner_monitor = tm.current_monitor.active_monitor
+            # 修改锁定判定：只要 active_monitor 存在（即使状态是 NOT_STARTED 并且刚初始化），也应被视为当前焦点，但这会导致没选时就锁定
+            # 所以正确的逻辑是：只有当状态明确为进行中/完成等，或者已经有圈数时，才锁定
+            has_laps = inner_monitor and inner_monitor.completed_laps > 0
+            if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
+                active_cond = inner_monitor.condition
         
         # 如果已经锁定了某个区域，就只聚焦那个区域
         if active_cond:
@@ -528,10 +532,14 @@ class MainWindow(QMainWindow):
              if cond_list:
                  for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
                      if c:
-                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                         # 同样使用简化坐标去重
+                         coord_key = (round(c.start.lon_lb, 3), round(c.start.lat_lb, 3))
                          if coord_key not in seen_coords:
                              seen_coords.add(coord_key)
                              target_conditions.append(c)
+
+        if not target_conditions and cond_list:
+            target_conditions = cond_list if isinstance(cond_list, list) else [cond_list]
 
         if not target_conditions:
             self._map_scale_ready = False
@@ -589,30 +597,44 @@ class MainWindow(QMainWindow):
         tm = self.system.task_manager
         active_cond = None
         if tm.current_monitor and isinstance(tm.current_monitor, CompositeConditionMonitor):
-            # 判断是否已经锁定：
-            # 1. 状态不是 NOT_STARTED (例如 IN_PROGRESS)
-            # 2. 或者状态是 NOT_STARTED 但是已经有完成的圈数 (等待下一圈)
-            has_laps = tm.current_monitor.active_monitor and tm.current_monitor.active_monitor.completed_laps > 0
-            if tm.current_monitor.active_monitor and (tm.current_monitor.state != ConditionState.NOT_STARTED or has_laps):
-                active_cond = tm.current_monitor.active_monitor.condition
-        
+            # 获取内部实际正在执行的子监控器（包含 TW-1, TW-2 等）
+            inner_monitor = tm.current_monitor.active_monitor
+            # 修改锁定判定：只要 active_monitor 存在（即使状态是 NOT_STARTED 并且刚初始化），也应被视为当前焦点，但这会导致没选时就锁定
+            # 所以正确的逻辑是：只有当状态明确为进行中/完成等，或者已经有圈数时，才锁定
+            has_laps = inner_monitor and inner_monitor.completed_laps > 0
+            if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
+                active_cond = inner_monitor.condition
+                
+        # 强制重算地图边界和比例尺
+        self._compute_map_scale(current_task, gps)
+
         if active_cond:
              target_conditions = [active_cond]
         else:
-             # 如果未锁定（车辆还未进入任何一组区域的起点），绘制所有候选区域
-             # 确保去重，如果多个同名工况坐标完全一致，只画一个
+             # 如果未锁定，绘制所有候选区域，必须去除重复坐标
              target_conditions = []
              seen_coords = set()
              if cond_list:
                  for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
                      if c:
-                         # 使用起点的坐标作为唯一标识
-                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                         # 只用起点的下限做简单哈希去重，防止浮点微小差异影响去重
+                         # 降低精度到小数点后3位（约百米级别）以确保相似坐标被视为同一个
+                         coord_key = (round(c.start.lon_lb, 3), round(c.start.lat_lb, 3))
                          if coord_key not in seen_coords:
                              seen_coords.add(coord_key)
                              target_conditions.append(c)
 
+        if not target_conditions:
+            # 去重和兜底都失败时，才尝试恢复为全部
+            if cond_list:
+                target_conditions = cond_list if isinstance(cond_list, list) else [cond_list]
+
+        # 计算地图比例尺，如果还没有的话，或者强制重算
+        self._compute_map_scale(current_task, gps)
+        
         if not target_conditions or not getattr(self, '_map_scale_ready', False):
+            # 强制重新计算比例尺
+            self._map_scale_ready = False
             return
 
         zones = []
@@ -727,12 +749,13 @@ class MainWindow(QMainWindow):
             req_laps = task.get('required_laps', 1)
             
             if 'laps_completed' in task and 'required_laps' in task:
-                lap_display = f" | 圈数: {laps_comp}/{req_laps}"
+                lap_display = f" | 圈数: {laps_comp} / {req_laps}"
                 name = f"{name}{lap_display}"
                 
+            # 修正状态文字：如果圈数>0且当前显示为未开始或等待开始，修正显示为“等待开始下一圈”
             if display_state in ['未开始', '等待开始'] and laps_comp > 0:
                 display_state = '等待开始下一圈'
-                state = 'waiting_next_lap'
+                state = 'waiting_next_lap'  # Adjust state code for UI logic
             
             item.setText(0, display_state)
             item.setText(1, name)

@@ -14,9 +14,11 @@ class GPSPoint:
     lat_ub: float  # 纬度上限
 
     def contains(self, lon: float, lat: float) -> bool:
-        """判断GPS坐标是否在此范围内"""
-        return (self.lon_lb <= lon <= self.lon_ub and
-                self.lat_lb <= lat <= self.lat_ub)
+        """判断GPS坐标是否在此范围内，增加极小的容差处理浮点数精度问题"""
+        # 添加一个微小的容差(约5米左右)，避免浮点数在边界上的跳动，并降低精度要求
+        tol = 0.00005
+        return (self.lon_lb - tol <= lon <= self.lon_ub + tol and
+                self.lat_lb - tol <= lat <= self.lat_ub + tol)
 
     @property
     def center(self) -> Tuple[float, float]:

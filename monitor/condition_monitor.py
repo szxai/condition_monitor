@@ -151,7 +151,11 @@ class ConditionMonitor:
                 self.end_time = self.end_time or gps.timestamp
                 self.last_gps = gps
                 return self.state
+            
+            # 使用包含稍微放大一点的宽容度来判断，或者至少增加日志以便调试
             if self.condition.start.contains(gps.longitude, gps.latitude):
+                # 记录一下触发点，方便调试
+                logger.info(f"[{self.condition.condition_name}] 进入起点，触发坐标: {gps.longitude}, {gps.latitude}")
                 self.state = ConditionState.IN_PROGRESS
                 if not self.start_time:
                     self.start_time = gps.timestamp
@@ -468,11 +472,14 @@ class CompositeConditionMonitor:
             # 如果活动监控器被重置（回退到 NOT_STARTED 且没有任何圈数进度），我们需要解除锁定，允许重新选择
             if new_state == ConditionState.NOT_STARTED and self.active_monitor.completed_laps == 0:
                 self.active_monitor = None
+                self.state = ConditionState.NOT_STARTED
             else:
                 self.state = new_state
                 return new_state
             
         # 如果没有活动的监控器，检查所有
+        # 特别是对于 TW 这样的组合工况，需要让子 monitor 能处理进入起点的逻辑
+        # 只要有任何一个 monitor 触发了开始，就立即锁定并返回
         for monitor in self.monitors:
             state = monitor.update(gps)
             if state != ConditionState.NOT_STARTED:
