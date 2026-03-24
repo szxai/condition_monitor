@@ -238,8 +238,18 @@ class TaskManager:
         old_state = monitor.state
         new_state = monitor.update(gps)
         
+        # 保护：确保新状态是枚举值而不是字符串
+        if isinstance(new_state, str):
+             logger.error(f"Error: new_state is a string ({new_state}) instead of ConditionState")
+             # 如果它返回了字符串，我们强行把它当做未改变或者尝试转回枚举
+             # 因为后面对 new_state 的操作（比如判断是否等于某个枚举）都会报错
+             # 为了保险，我们把它转回原来的状态对象
+             new_state = old_state
+             
         if old_state != new_state:
-            logger.info(f"Task {monitor.condition.condition_name} state changed: {old_state.value} -> {new_state.value}")
+            old_val = old_state.value if hasattr(old_state, 'value') else old_state
+            new_val = new_state.value if hasattr(new_state, 'value') else new_state
+            logger.info(f"Task {monitor.condition.condition_name} state changed: {old_val} -> {new_val}")
         
         # 实时保存状态变化
         if monitor.task_id:
@@ -273,8 +283,9 @@ class TaskManager:
             'all_completed': False,
             'current_task': monitor.get_progress_info(),
             'state_changed': old_state != new_state,
-            'old_state': old_state.value,
-            'new_state': new_state.value,
+            'old_state': old_state.value if hasattr(old_state, 'value') else old_state,
+            'new_state': new_state.value if hasattr(new_state, 'value') else new_state,
+            'task_id': getattr(monitor, 'task_id', None),
             'message': ''
         }
 

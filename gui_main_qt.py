@@ -532,8 +532,8 @@ class MainWindow(QMainWindow):
              if cond_list:
                  for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
                      if c:
-                         # 同样使用简化坐标去重
-                         coord_key = (round(c.start.lon_lb, 3), round(c.start.lat_lb, 3))
+                         # 提高精度，或者直接比较完整坐标
+                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
                          if coord_key not in seen_coords:
                              seen_coords.add(coord_key)
                              target_conditions.append(c)
@@ -617,19 +617,18 @@ class MainWindow(QMainWindow):
              if cond_list:
                  for c in (cond_list if isinstance(cond_list, list) else [cond_list]):
                      if c:
-                         # 只用起点的下限做简单哈希去重，防止浮点微小差异影响去重
-                         # 降低精度到小数点后3位（约百米级别）以确保相似坐标被视为同一个
-                         coord_key = (round(c.start.lon_lb, 3), round(c.start.lat_lb, 3))
+                         # 提高精度，或者直接比较完整坐标
+                         coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
                          if coord_key not in seen_coords:
                              seen_coords.add(coord_key)
                              target_conditions.append(c)
 
+        # 兜底：如果 target_conditions 为空，退回到尝试画所有
         if not target_conditions:
-            # 去重和兜底都失败时，才尝试恢复为全部
             if cond_list:
                 target_conditions = cond_list if isinstance(cond_list, list) else [cond_list]
 
-        # 计算地图比例尺，如果还没有的话，或者强制重算
+        # 每次 update_map 时都重算比例尺，这非常关键，特别是当从多条路线缩小到一条路线时
         self._compute_map_scale(current_task, gps)
         
         if not target_conditions or not getattr(self, '_map_scale_ready', False):
