@@ -521,8 +521,8 @@ class MainWindow(QMainWindow):
             conds_iterable = cond_list if isinstance(cond_list, list) else [cond_list]
             for c in conds_iterable:
                 if c:
-                    # 使用完整坐标作为去重键
-                    coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                    # 使用更宽松的坐标键（或者直接不过滤去重，完全信任 cond_list）
+                    coord_key = (round(c.start.lon_lb, 4), round(c.start.lat_lb, 4))
                     if coord_key not in seen_coords:
                         seen_coords.add(coord_key)
                         target_conditions.append(c)
@@ -603,8 +603,8 @@ class MainWindow(QMainWindow):
             conds_iterable = cond_list if isinstance(cond_list, list) else [cond_list]
             for c in conds_iterable:
                 if c:
-                    # 使用完整坐标作为去重键
-                    coord_key = (c.start.lon_lb, c.start.lat_lb, c.start.lon_ub, c.start.lat_ub)
+                    # 使用更宽松的坐标键（或者直接不过滤去重，完全信任 cond_list）
+                    coord_key = (round(c.start.lon_lb, 4), round(c.start.lat_lb, 4))
                     if coord_key not in seen_coords:
                         seen_coords.add(coord_key)
                         target_conditions.append(c)

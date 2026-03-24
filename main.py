@@ -163,8 +163,13 @@ class ConditionMonitorSystem:
         
         # 优先使用外部任务列表数据（如果有）
         if self.task_list_data:
-            # 从外部任务列表中提取所有需要的工况ID
-            condition_map = {cond.condition_name: cond for cond in all_conditions}
+            # 修改：将 condition_map 改为列表的字典，防止同名工况（如 TW-1, TW-2 解析后都叫 TW）被覆盖
+            condition_map = {}
+            for cond in all_conditions:
+                if cond.condition_name not in condition_map:
+                    condition_map[cond.condition_name] = []
+                condition_map[cond.condition_name].append(cond)
+                
             selected_conditions = []
             
             # 从execution_order中获取所有任务，然后从task_map中获取对应的condition_id
@@ -175,7 +180,8 @@ class ConditionMonitorSystem:
                 if task_id in task_map:
                     condition_id = task_map[task_id].get('condition_id')
                     if condition_id in condition_map:
-                        selected_conditions.append(condition_map[condition_id])
+                        # 将所有同名工况加入 selected_conditions
+                        selected_conditions.extend(condition_map[condition_id])
                     else:
                         print(f"警告: 任务 {task_id} 引用了未定义的工况: {condition_id}")
                 else:
@@ -186,11 +192,16 @@ class ConditionMonitorSystem:
         # 其次使用配置文件中的任务列表
         elif task_list:
             # 使用指定的任务列表
-            condition_map = {cond.condition_name: cond for cond in all_conditions}
+            condition_map = {}
+            for cond in all_conditions:
+                if cond.condition_name not in condition_map:
+                    condition_map[cond.condition_name] = []
+                condition_map[cond.condition_name].append(cond)
+                
             selected_conditions = []
             for task_name in task_list:
                 if task_name in condition_map:
-                    selected_conditions.append(condition_map[task_name])
+                    selected_conditions.extend(condition_map[task_name])
                 else:
                     print(f"警告: 任务列表中包含未定义的工况: {task_name}")
             conditions = selected_conditions
