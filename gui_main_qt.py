@@ -15,6 +15,7 @@ from PyQt5.QtGui import QFont, QColor, QIcon, QPen, QBrush, QPolygonF
 
 # Import existing system
 from main import ConditionMonitorSystem
+from models.condition import ConditionState
 from models.gps_data import GPSData
 from monitor.condition_monitor import CompositeConditionMonitor
 from utils.logger import setup_logger
@@ -510,14 +511,12 @@ class MainWindow(QMainWindow):
         cond_id = current_task.get('condition')
         cond_list = self.system.task_manager.conditions_map.get(cond_id)
         
-        # 优先使用 active_monitor 对应的工况（如果存在），否则使用所有候选工况来计算边界
+        # 确定需要绘制的区域
         tm = self.system.task_manager
         active_cond = None
         if tm.current_monitor and isinstance(tm.current_monitor, CompositeConditionMonitor):
             # 获取内部实际正在执行的子监控器（包含 TW-1, TW-2 等）
             inner_monitor = tm.current_monitor.active_monitor
-            # 修改锁定判定：只要 active_monitor 存在（即使状态是 NOT_STARTED 并且刚初始化），也应被视为当前焦点，但这会导致没选时就锁定
-            # 所以正确的逻辑是：只有当状态明确为进行中/完成等，或者已经有圈数时，才锁定
             has_laps = inner_monitor and inner_monitor.completed_laps > 0
             if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
                 active_cond = inner_monitor.condition
@@ -605,9 +604,6 @@ class MainWindow(QMainWindow):
             if inner_monitor and (inner_monitor.state != ConditionState.NOT_STARTED or has_laps):
                 active_cond = inner_monitor.condition
                 
-        # 强制重算地图边界和比例尺
-        self._compute_map_scale(current_task, gps)
-
         if active_cond:
              target_conditions = [active_cond]
         else:

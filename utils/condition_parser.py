@@ -62,6 +62,28 @@ class ConditionParser:
             for row in reader:
                 try:
                     condition = ConditionParser._parse_row(row)
+                    
+                    # 动态处理类似 TW-1, TW-2 这种变体名称，将它们统一归类为 TW
+                    # 但是保留它们各自不同的坐标数据，这样程序就能通过 CompositeConditionMonitor
+                    # 自动把它们组合起来。
+                    raw_name = condition.condition_name
+                    
+                    # 动态处理类似 TW-1, TW-2, D16-1, D16-2 这种变体名称，将它们统一归类为基础名称
+                    # 但是保留它们各自不同的坐标数据，这样程序就能通过 CompositeConditionMonitor
+                    # 自动把它们组合起来。
+                    # 注意：如果名称中包含多个 '-' (比如 A-B-1)，我们只剥离最后的数字部分
+                    # 例如 D16-1 变为 D16, D13-2 变为 D13
+                    import re
+                    # 匹配以 "-数字" 结尾的名称
+                    match = re.search(r'-\d+$', raw_name)
+                    if match:
+                        base_name = raw_name[:match.start()]
+                        # 将名称强制修改为基础名称（如 D16-1 变为 D16）
+                        condition.condition_name = base_name
+                        # 可以在描述里保留原始名称以供调试区分
+                        if not condition.description:
+                            condition.description = raw_name
+                            
                     conditions.append(condition)
                 except (ValueError, KeyError) as exc:
                     print(f"警告: 跳过无效行 {row.get('Condition', 'Unknown')}: {exc}")
