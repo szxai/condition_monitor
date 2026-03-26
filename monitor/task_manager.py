@@ -748,16 +748,23 @@ class TaskManager:
                 task_id = self.current_monitor.task_id
                 self.completed_task_ids.append(task_id)
                 
+                end_time_str = ""
+                if hasattr(self.current_monitor, 'end_time') and self.current_monitor.end_time:
+                    end_time_str = self.current_monitor.end_time.isoformat()
+                else:
+                    end_time_str = datetime.now().isoformat()
+                    
                 # 更新任务映射中的任务状态
                 if task_id in self.task_map:
                     self.task_map[task_id]['state'] = 'skipped'
-                    self.task_map[task_id]['end_time'] = datetime.now().isoformat()
+                    self.task_map[task_id]['end_time'] = end_time_str
                     self.task_map[task_id]['completion_reason'] = reason
                     self._save_task_status(task_id, {
                         'state': 'skipped',
-                        'state_display': ConditionState.SKIPPED.value,
+                        'state_display': '已跳过',
                         'end_time': self.task_map[task_id]['end_time'],
-                        'skip_reason': reason
+                        'completion_reason': reason,
+                        'last_update': end_time_str
                     })
             else:
                 # 传统方式，记录已完成的工况名称
@@ -782,10 +789,17 @@ class TaskManager:
             task_id = self.current_monitor.task_id
             self.completed_task_ids.append(task_id)
             
+            # 优先使用 monitor 中的 end_time（通常来源于 GPS 时间戳）
+            end_time_str = ""
+            if hasattr(self.current_monitor, 'end_time') and self.current_monitor.end_time:
+                end_time_str = self.current_monitor.end_time.isoformat()
+            else:
+                end_time_str = datetime.now().isoformat()
+            
             # 更新任务映射中的任务状态
             if task_id in self.task_map:
                 self.task_map[task_id]['state'] = result_flag
-                self.task_map[task_id]['end_time'] = datetime.now().isoformat()
+                self.task_map[task_id]['end_time'] = end_time_str
                 completion_reason = getattr(self.current_monitor, 'completion_reason', None) or \
                     summary.get('completion_reason') or summary.get('reason') or '自动完成'
                 self.task_map[task_id]['completion_reason'] = completion_reason
@@ -797,7 +811,7 @@ class TaskManager:
                     'laps_completed': self.current_monitor.completed_laps,
                     'checkpoints': summary.get('checkpoints', []),
                     'loop_zones': summary.get('loop_zones', []),
-                    'last_update': datetime.now().isoformat()
+                    'last_update': end_time_str
                 })
         elif result_flag in ['completed', 'manual_completed']:
             # 传统方式，记录工况名称

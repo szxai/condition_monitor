@@ -52,15 +52,30 @@ class TaskCreatorApp(QMainWindow):
             return
             
         try:
+            import re
             # Try reading with pandas for robustness
             df = self.read_csv_safely(CONDITIONS_FILE)
             
             # Check for required columns
             if 'Condition' in df.columns:
                 for _, row in df.iterrows():
-                    cond_id = str(row['Condition']).strip()
+                    raw_id = str(row['Condition']).strip()
                     desc = str(row['Description']).strip() if 'Description' in df.columns else ""
-                    self.conditions[cond_id] = desc
+                    
+                    # 使用与主程序相同的正则剥离逻辑，将 TW-1, D16-2 统一为基础名称
+                    match = re.search(r'-\d+$', raw_id)
+                    if match:
+                        cond_id = raw_id[:match.start()]
+                        # 如果没有描述，可以保留原始名称作为描述
+                        if not desc:
+                            desc = raw_id
+                    else:
+                        cond_id = raw_id
+                        
+                    # 由于剥离了后缀，多个 TW-1, TW-2 都会变成 TW。
+                    # 为了防止描述被后来的覆盖为空，我们只在尚未存在或者已有描述较短时才更新描述
+                    if cond_id not in self.conditions or len(self.conditions[cond_id]) < len(desc):
+                        self.conditions[cond_id] = desc
             else:
                 QMessageBox.warning(self, "警告", "工况定义文件缺少 'Condition' 列")
                 
