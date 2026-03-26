@@ -1,6 +1,7 @@
 # 字节码
 __pycache__/
 *.pyc
+*.pyo
 
 # 虚拟环境
 examples/
