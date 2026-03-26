@@ -171,6 +171,7 @@ class ConditionMonitorSystem:
                 condition_map[cond.condition_name].append(cond)
                 
             selected_conditions = []
+            seen_conditions = set() # 防止多次追加相同工况
             
             # 从execution_order中获取所有任务，然后从task_map中获取对应的condition_id
             task_ids = self.task_list_data.get('execution_order', [])
@@ -179,10 +180,11 @@ class ConditionMonitorSystem:
             for task_id in task_ids:
                 if task_id in task_map:
                     condition_id = task_map[task_id].get('condition_id')
-                    if condition_id in condition_map:
+                    if condition_id in condition_map and condition_id not in seen_conditions:
                         # 将所有同名工况加入 selected_conditions
                         selected_conditions.extend(condition_map[condition_id])
-                    else:
+                        seen_conditions.add(condition_id)
+                    elif condition_id not in condition_map:
                         print(f"警告: 任务 {task_id} 引用了未定义的工况: {condition_id}")
                 else:
                     print(f"警告: 执行顺序中包含未在任务映射中定义的任务: {task_id}")
