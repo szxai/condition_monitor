@@ -5,7 +5,7 @@ import sys
 import time
 import csv
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Iterator
 from models.gps_data import GPSData
@@ -49,6 +49,7 @@ class USBGPSReader(GPSReader):
         self.serial = None
         self.raw_logger = setup_raw_logger()
         self.last_valid_data = {}  # Cache for merging GGA/RMC data
+        self.last_nmea_date = None
         self._init_serial()
     
     def _init_serial(self):
@@ -122,6 +123,17 @@ class USBGPSReader(GPSReader):
     
     def _merge_gps_data(self, new_data: GPSData) -> GPSData:
         """Merge new GPS data with cached values to prevent flickering"""
+        last_time = self.last_valid_data.get('timestamp')
+        if last_time and new_data.timestamp < last_time:
+            # 保证实时 USB 数据时间单调，避免跨天/串口抖动导致时间倒退
+            new_data = GPSData(
+                timestamp=last_time,
+                latitude=new_data.latitude,
+                longitude=new_data.longitude,
+                altitude=new_data.altitude,
+                speed=new_data.speed,
+                heading=new_data.heading
+            )
         
         # Sanity check for coordinate jumps (Drift Filter)
         # If new data implies impossible speed (> 400 km/h), reject it
@@ -191,13 +203,7 @@ class USBGPSReader(GPSReader):
                 
             # Time
             time_str = parts[1]
-            if len(time_str) >= 6:
-                hour = int(time_str[0:2])
-                minute = int(time_str[2:4])
-                second = int(time_str[4:6])
-                timestamp = datetime.now().replace(hour=hour, minute=minute, second=second)
-            else:
-                timestamp = datetime.now()
+            timestamp = self._parse_nmea_timestamp(time_str, parts[9] if len(parts) > 9 else '')
                 
             # Latitude
             lat_deg = float(parts[3][:2])
@@ -242,13 +248,7 @@ class USBGPSReader(GPSReader):
             
             # 解析时间
             time_str = parts[1]  # UTC时间 HHMMSS.SSS
-            if len(time_str) >= 6:
-                hour = int(time_str[0:2])
-                minute = int(time_str[2:4])
-                second = int(time_str[4:6])
-                timestamp = datetime.now().replace(hour=hour, minute=minute, second=second)
-            else:
-                timestamp = datetime.now()
+            timestamp = self._parse_nmea_timestamp(time_str)
             
             # 解析纬度
             lat_deg = float(parts[2][:2])
@@ -281,6 +281,42 @@ class USBGPSReader(GPSReader):
         except (ValueError, IndexError) as e:
             print(f"解析NMEA数据错误: {e}")
             return None
+
+    def _parse_nmea_timestamp(self, time_str: str, date_str: str = '') -> datetime:
+        """解析 NMEA 时间，优先使用 RMC 日期，并保证时间尽量单调"""
+        now = datetime.now()
+        if len(time_str) < 6:
+            return now
+
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        second = int(time_str[4:6])
+        microsecond = 0
+        if '.' in time_str:
+            frac = time_str.split('.', 1)[1][:6].ljust(6, '0')
+            microsecond = int(frac)
+
+        has_explicit_date = len(date_str) >= 6
+        if has_explicit_date:
+            day = int(date_str[0:2])
+            month = int(date_str[2:4])
+            year = 2000 + int(date_str[4:6])
+            self.last_nmea_date = (year, month, day)
+        elif self.last_nmea_date:
+            year, month, day = self.last_nmea_date
+        else:
+            year, month, day = now.year, now.month, now.day
+
+        candidate = datetime(year, month, day, hour, minute, second, microsecond)
+        last_time = self.last_valid_data.get('timestamp')
+
+        if last_time and not has_explicit_date:
+            if candidate < last_time - timedelta(hours=12):
+                candidate += timedelta(days=1)
+            elif candidate > last_time + timedelta(hours=12):
+                candidate -= timedelta(days=1)
+
+        return candidate
     
     def close(self):
         """关闭串口"""

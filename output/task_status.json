@@ -1,14 +1,17 @@
 {
-  "timestamp": "2026-03-26T05:45:43.444577Z",
+  "timestamp": "2026-04-09T16:01:45.511550Z",
   "event_type": "program_end",
   "current_task": {
-    "condition": "TW",
-    "description": "扭曲路1",
-    "task_id": "TASK-BNB-001",
+    "condition": "AG",
+    "description": "ABS砂石路",
+    "task_id": "TASK-002",
     "state": "未开始",
     "start_time": null,
     "end_time": null,
     "duration_seconds": null,
+    "ref_time_min": 200.0,
+    "ref_time_max": 600.0,
+    "completion_score": null,
     "avg_speed_kmh": null,
     "max_speed_kmh": null,
     "min_speed_kmh": null,
@@ -17,37 +20,52 @@
       {
         "name": "Waypoint01",
         "required": true,
+        "hint_text": "",
+        "lap_hints": {
+          "1": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动25→中/全加速40→全制动25→中/全加速40→全制动0→返回3#环岛",
+          "2": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动0→中/全加速40→全制动25→全制动0→切换至倒挡，中25/全20→全制动0→返回3#环岛"
+        },
         "passed": false,
         "passed_at": null
       },
       {
         "name": "Waypoint02",
         "required": true,
+        "hint_text": "",
+        "lap_hints": {
+          "1": "掉头通过连接路，返回3#环岛，开始第二圈吧",
+          "2": "已完成，请返回3#环岛"
+        },
         "passed": false,
         "passed_at": null
       },
       {
         "name": "Waypoint03",
         "required": true,
+        "hint_text": "",
+        "lap_hints": {},
         "passed": false,
         "passed_at": null
       }
     ],
     "loop_zones": null,
     "laps_completed": 0,
-    "required_laps": 1,
+    "required_laps": 2,
     "skip_reason": null,
     "failure_reason": null
   },
   "all_tasks_status": [
     {
-      "condition": "TW",
-      "description": "扭曲路1",
-      "task_id": "TASK-BNB-001",
-      "state": "未开始",
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-001",
+      "state": "人工完成",
       "start_time": null,
-      "end_time": null,
+      "end_time": "2026-04-10T00:00:42.563974",
       "duration_seconds": null,
+      "ref_time_min": 200.0,
+      "ref_time_max": 600.0,
+      "completion_score": null,
       "avg_speed_kmh": null,
       "max_speed_kmh": null,
       "min_speed_kmh": null,
@@ -56,32 +74,98 @@
         {
           "name": "Waypoint01",
           "required": true,
+          "hint_text": "",
+          "lap_hints": {
+            "1": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动25→中/全加速40→全制动25→中/全加速40→全制动0→返回3#环岛",
+            "2": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动0→中/全加速40→全制动25→全制动0→切换至倒挡，中25/全20→全制动0→返回3#环岛"
+          },
           "passed": false,
           "passed_at": null
         },
         {
           "name": "Waypoint02",
           "required": true,
+          "hint_text": "",
+          "lap_hints": {
+            "1": "掉头通过连接路，返回3#环岛，开始第二圈吧",
+            "2": "已完成，请返回3#环岛"
+          },
           "passed": false,
           "passed_at": null
         },
         {
           "name": "Waypoint03",
           "required": true,
+          "hint_text": "",
+          "lap_hints": {},
           "passed": false,
           "passed_at": null
         }
       ],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
+      "skip_reason": null,
+      "failure_reason": null,
+      "result": "manual_completed"
+    },
+    {
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-002",
+      "state": "未开始",
+      "start_time": null,
+      "end_time": null,
+      "duration_seconds": null,
+      "ref_time_min": 200.0,
+      "ref_time_max": 600.0,
+      "completion_score": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "hint_text": "",
+          "lap_hints": {
+            "1": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动25→中/全加速40→全制动25→中/全加速40→全制动0→返回3#环岛",
+            "2": "轻加速30→坡顶轻加速40→在“开始制动”标志之后，全制动0→中/全加速40→全制动25→全制动0→切换至倒挡，中25/全20→全制动0→返回3#环岛"
+          },
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "hint_text": "",
+          "lap_hints": {
+            "1": "掉头通过连接路，返回3#环岛，开始第二圈吧",
+            "2": "已完成，请返回3#环岛"
+          },
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "hint_text": "",
+          "lap_hints": {},
+          "passed": false,
+          "passed_at": null
+        }
+      ],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 2,
       "skip_reason": null,
       "failure_reason": null
     },
     {
-      "condition": "TW",
-      "description": "中等比利时路",
-      "task_id": "TASK-BNB-002",
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-003",
       "state": "未开始",
       "state_display": "未开始",
       "start_time": null,
@@ -94,14 +178,15 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
+      "completion_score": null,
       "skip_reason": null,
       "failure_reason": null
     },
     {
-      "condition": "DP",
-      "description": "耐久连接路",
-      "task_id": "TASK-BNB-003",
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-004",
       "state": "未开始",
       "state_display": "未开始",
       "start_time": null,
@@ -114,14 +199,15 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
+      "completion_score": null,
       "skip_reason": null,
       "failure_reason": null
     },
     {
-      "condition": "FB",
-      "description": "城市广场",
-      "task_id": "TASK-BNB-004",
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-005",
       "state": "未开始",
       "state_display": "未开始",
       "start_time": null,
@@ -134,15 +220,79 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 1,
+      "required_laps": 2,
+      "completion_score": null,
+      "skip_reason": null,
+      "failure_reason": null
+    },
+    {
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-006",
+      "state": "未开始",
+      "state_display": "未开始",
+      "start_time": null,
+      "end_time": null,
+      "duration_seconds": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 2,
+      "completion_score": null,
+      "skip_reason": null,
+      "failure_reason": null
+    },
+    {
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-007",
+      "state": "未开始",
+      "state_display": "未开始",
+      "start_time": null,
+      "end_time": null,
+      "duration_seconds": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 2,
+      "completion_score": null,
+      "skip_reason": null,
+      "failure_reason": null
+    },
+    {
+      "condition": "AG",
+      "description": "ABS砂石路",
+      "task_id": "TASK-008",
+      "state": "未开始",
+      "state_display": "未开始",
+      "start_time": null,
+      "end_time": null,
+      "duration_seconds": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 2,
+      "completion_score": null,
       "skip_reason": null,
       "failure_reason": null
     }
   ],
   "summary": {
-    "total_tasks": 4,
+    "total_tasks": 8,
     "completed_tasks": 0,
-    "pending_tasks": 4,
+    "pending_tasks": 7,
     "failed_tasks": 0,
     "skipped_tasks": 0
   }

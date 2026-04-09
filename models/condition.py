@@ -2,7 +2,7 @@
 工况定义数据模型
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -33,6 +33,8 @@ class PathCheckpoint:
     name: str
     zone: GPSPoint
     required: bool = True  # 是否必须经过
+    hint_text: str = ""  # 默认操作提示
+    lap_hints: Dict[int, str] = field(default_factory=dict)  # 分圈操作提示
 
 
 @dataclass
@@ -41,6 +43,8 @@ class LoopZone:
     name: str
     zone: GPSPoint
     required_entries: int = 1  # 需要进入的次数（计圈）
+    hint_text: str = ""  # 默认操作提示
+    lap_hints: Dict[int, str] = field(default_factory=dict)  # 分圈操作提示
 
 
 @dataclass
@@ -56,6 +60,8 @@ class ConditionDefinition:
     checkpoints: List[PathCheckpoint] = field(default_factory=list)  # 按顺序必经点
     loop_zones: List[LoopZone] = field(default_factory=list)  # 需要重复进入的区域
     forbidden_zones: List[GPSPoint] = field(default_factory=list)  # 必不经过区域
+    prestart_hint: str = ""  # 起点前提示
+    prestart_lap_hints: Dict[int, str] = field(default_factory=dict)  # 起点前分圈提示
     required_laps: int = 1  # 完成所需的进出次数（整条路线圈数）
     skip_distance_threshold_m: float = 200.0  # 自动跳过的距离阈值
     skip_time_threshold_s: float = 30.0  # 自动跳过的时间阈值

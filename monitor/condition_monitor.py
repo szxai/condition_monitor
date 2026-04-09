@@ -205,12 +205,42 @@ class ConditionMonitor:
             {
                 'name': cp.name,
                 'required': cp.required,
+                'hint_text': cp.hint_text,
+                'lap_hints': cp.lap_hints,
                 'passed': self.checkpoint_status.get(cp.name, False),
                 'passed_at': (self.checkpoint_pass_time[cp.name].isoformat()
                               if cp.name in self.checkpoint_pass_time else None)
             }
             for cp in self.condition.checkpoints
         ]
+
+        current_lap = self._get_current_lap_number()
+        active_checkpoint = self._get_latest_passed_required_checkpoint()
+        next_checkpoint = self._get_next_required_checkpoint()
+        next_loop_zone = self._get_next_incomplete_loop_zone()
+        operation_hint = ""
+        operation_source = ""
+        operation_target = ""
+
+        if self.state == ConditionState.NOT_STARTED:
+            operation_hint = self._resolve_hint_text(
+                self.condition.prestart_hint,
+                self.condition.prestart_lap_hints
+            )
+            operation_source = 'prestart'
+            operation_target = 'Start'
+        elif next_loop_zone and not next_checkpoint:
+            operation_hint = self._resolve_hint_text(next_loop_zone.hint_text, next_loop_zone.lap_hints)
+            operation_source = 'loop_zone'
+            operation_target = next_loop_zone.name
+        elif active_checkpoint:
+            operation_hint = self._resolve_hint_text(active_checkpoint.hint_text, active_checkpoint.lap_hints)
+            operation_source = 'checkpoint'
+            operation_target = active_checkpoint.name
+        elif next_checkpoint:
+            operation_hint = self._resolve_hint_text(next_checkpoint.hint_text, next_checkpoint.lap_hints)
+            operation_source = 'upcoming_checkpoint'
+            operation_target = next_checkpoint.name
 
         info = {
             'condition': self.condition.condition_name,
@@ -220,6 +250,10 @@ class ConditionMonitor:
             'checkpoints': checkpoints_info,
             'laps_completed': self.completed_laps,
             'required_laps': self.required_laps,
+            'current_lap': current_lap,
+            'operation_hint': operation_hint,
+            'operation_hint_source': operation_source,
+            'operation_hint_target': operation_target,
             'skip_reason': self.skip_reason,
             'failure_reason': self.failure_reason
         }
@@ -228,6 +262,9 @@ class ConditionMonitor:
             info['start_time'] = self.start_time.isoformat()
         if self.end_time:
             info['end_time'] = self.end_time.isoformat()
+        duration = self._get_duration_seconds()
+        info['duration_seconds'] = duration
+        info['completion_score'] = self._calculate_completion_score(duration)
         if self.last_gps:
             info['last_gps'] = {
                 'longitude': self.last_gps.longitude,
@@ -240,7 +277,9 @@ class ConditionMonitor:
                 {
                     'name': zone.name,
                     'required_entries': zone.required_entries,
-                    'current_entries': self.loop_zone_counts.get(zone.name, 0)
+                    'current_entries': self.loop_zone_counts.get(zone.name, 0),
+                    'hint_text': zone.hint_text,
+                    'lap_hints': zone.lap_hints
                 }
                 for zone in self.condition.loop_zones
             ]
@@ -249,9 +288,8 @@ class ConditionMonitor:
 
     def get_summary(self) -> dict:
         """返回工况执行总结"""
-        duration = None
-        if self.start_time and self.end_time:
-            duration = (self.end_time - self.start_time).total_seconds()
+        duration = self._get_duration_seconds()
+        completion_score = self._calculate_completion_score(duration)
 
         avg_speed = (self.speed_sum / self.speed_count) if self.speed_count else None
 
@@ -263,6 +301,9 @@ class ConditionMonitor:
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'end_time': self.end_time.isoformat() if self.end_time else None,
             'duration_seconds': duration,
+            'ref_time_min': self.condition.ref_time_min,
+            'ref_time_max': self.condition.ref_time_max,
+            'completion_score': completion_score,
             'avg_speed_kmh': avg_speed,
             'max_speed_kmh': self.speed_max,
             'min_speed_kmh': self.speed_min,
@@ -274,6 +315,31 @@ class ConditionMonitor:
             'skip_reason': self.skip_reason,
             'failure_reason': self.failure_reason
         }
+
+    def _get_duration_seconds(self) -> Optional[float]:
+        if self.start_time and self.end_time:
+            return (self.end_time - self.start_time).total_seconds()
+        return None
+
+    def _calculate_completion_score(self, duration_seconds: Optional[float]) -> Optional[float]:
+        if duration_seconds is None:
+            return None
+
+        min_ref = float(self.condition.ref_time_min)
+        max_ref = float(self.condition.ref_time_max)
+        if min_ref <= duration_seconds <= max_ref:
+            return 100.0
+
+        # 超出范围按超出比例扣分，最低0分
+        if duration_seconds < min_ref:
+            base = max(min_ref, 1e-6)
+            ratio = (min_ref - duration_seconds) / base
+        else:
+            base = max(max_ref, 1e-6)
+            ratio = (duration_seconds - max_ref) / base
+
+        score = max(0.0, 100.0 * (1.0 - ratio))
+        return round(score, 2)
 
     def reset(self):
         """重置状态（保留任务ID）"""
@@ -396,6 +462,35 @@ class ConditionMonitor:
     def _reset_loop_states(self):
         self.loop_zone_counts = {zone.name: 0 for zone in self.condition.loop_zones}
         self.loop_zone_inside = {zone.name: False for zone in self.condition.loop_zones}
+
+    def _get_current_lap_number(self) -> int:
+        if self.state in (ConditionState.COMPLETED, ConditionState.MANUAL_COMPLETED):
+            return max(self.completed_laps, 1)
+        return min(self.completed_laps + 1, self.required_laps)
+
+    def _get_next_required_checkpoint(self):
+        if self.next_required_pointer >= len(self.required_indices):
+            return None
+        idx = self.required_indices[self.next_required_pointer]
+        return self.condition.checkpoints[idx]
+
+    def _get_latest_passed_required_checkpoint(self):
+        if self.next_required_pointer <= 0:
+            return None
+        idx = self.required_indices[self.next_required_pointer - 1]
+        return self.condition.checkpoints[idx]
+
+    def _get_next_incomplete_loop_zone(self):
+        for zone in self.condition.loop_zones:
+            if self.loop_zone_counts.get(zone.name, 0) < zone.required_entries:
+                return zone
+        return None
+
+    def _resolve_hint_text(self, default_hint: str, lap_hints: Dict[int, str]) -> str:
+        current_lap = self._get_current_lap_number()
+        if lap_hints and current_lap in lap_hints and lap_hints[current_lap]:
+            return lap_hints[current_lap]
+        return default_hint or ""
 
 
 class CompositeConditionMonitor:
@@ -536,4 +631,3 @@ class CompositeConditionMonitor:
         self.state = ConditionState.NOT_STARTED
         for monitor in self.monitors:
             monitor.reset()
-

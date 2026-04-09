@@ -64,6 +64,7 @@ class TaskManager:
         os.makedirs(os.path.dirname(self.task_status_file), exist_ok=True)
             
         self.task_status_data = {}
+        self._last_saved_status: Dict[str, str] = {}
         self._load_task_status()
         
         # 初始化待执行任务队列
@@ -189,10 +190,15 @@ class TaskManager:
 
     def _save_task_status(self, task_id: str, status_data: dict):
         """保存任务状态到文件"""
+        serialized = json.dumps(status_data, ensure_ascii=False, sort_keys=True)
+        if self._last_saved_status.get(task_id) == serialized:
+            return
+
         # 更新内存数据
         if task_id not in self.task_status_data:
             self.task_status_data[task_id] = {}
         self.task_status_data[task_id].update(status_data)
+        self._last_saved_status[task_id] = serialized
         
         # 写入文件
         try:
@@ -254,6 +260,7 @@ class TaskManager:
         # 实时保存状态变化
         if monitor.task_id:
             progress_info = monitor.get_progress_info()
+            gps_update_time = gps.timestamp.isoformat() if gps and gps.timestamp else datetime.now().isoformat()
             # 仅保存关键字段
             status_update = {
                 'state': self._state_to_code(monitor.state),
@@ -261,7 +268,8 @@ class TaskManager:
                 'laps_completed': monitor.completed_laps,
                 'checkpoints': progress_info.get('checkpoints', []),
                 'loop_zones': progress_info.get('loop_zones', []),
-                'last_update': datetime.now().isoformat()
+                'completion_score': progress_info.get('completion_score'),
+                'last_update': gps_update_time
             }
             if monitor.start_time:
                 status_update['start_time'] = monitor.start_time.isoformat()
@@ -404,6 +412,7 @@ class TaskManager:
                                 'loop_zones': None,
                                 'laps_completed': task_info.get('laps_completed', 0),
                                 'required_laps': condition.required_laps,
+                                'completion_score': task_info.get('completion_score'),
                                 'skip_reason': skip_reason,
                                 'failure_reason': None
                             }
@@ -442,6 +451,7 @@ class TaskManager:
                             'loop_zones': task_info.get('loop_zones', []),
                             'laps_completed': task_info.get('laps_completed', 0),
                             'required_laps': condition.required_laps if condition else 1,
+                            'completion_score': task_info.get('completion_score'),
                             'skip_reason': task_info.get('skip_reason'),
                             'failure_reason': task_info.get('failure_reason'),
                             'completion_reason': task_info.get('completion_reason')
@@ -513,6 +523,7 @@ class TaskManager:
         self.execution_log = []
         self.current_monitor = None
         self.auto_skip_state = {'timer_start': None, 'last_distance': None, 'increasing_streak': 0}
+        self._last_saved_status = {}
         
         # 重置待执行任务队列
         if self.task_list_data:
@@ -534,6 +545,7 @@ class TaskManager:
         
         # 重置状态文件
         self.task_status_data = {}
+        self._last_saved_status = {}
         try:
             with open(self.task_status_file, 'w', encoding='utf-8') as f:
                 json.dump({}, f)
@@ -728,6 +740,7 @@ class TaskManager:
                 task_id = self.current_monitor.task_id
                 if task_id in self.task_map:
                     self.task_map[task_id]['state'] = 'pending'
+                    self.task_map[task_id]['completion_score'] = None
                     self._save_task_status(task_id, {
                         'state': 'pending',
                         'state_display': '等待重试',
@@ -737,7 +750,8 @@ class TaskManager:
                         'loop_zones': [],   # 清除循环区状态
                         'laps_completed': 0, # 清除圈数
                         'distance_m': 0.0,   # 清除距离
-                        'avg_speed_kmh': None # 清除速度
+                        'avg_speed_kmh': None, # 清除速度
+                        'completion_score': None
                     })
             elif hasattr(self, 'pending_monitors'):
                 # 传统方式，将监控器重新加入待执行队列
@@ -759,11 +773,13 @@ class TaskManager:
                     self.task_map[task_id]['state'] = 'skipped'
                     self.task_map[task_id]['end_time'] = end_time_str
                     self.task_map[task_id]['completion_reason'] = reason
+                    self.task_map[task_id]['completion_score'] = 0.0
                     self._save_task_status(task_id, {
                         'state': 'skipped',
                         'state_display': '已跳过',
                         'end_time': self.task_map[task_id]['end_time'],
                         'completion_reason': reason,
+                        'completion_score': 0.0,
                         'last_update': end_time_str
                     })
             else:
@@ -803,6 +819,7 @@ class TaskManager:
                 completion_reason = getattr(self.current_monitor, 'completion_reason', None) or \
                     summary.get('completion_reason') or summary.get('reason') or '自动完成'
                 self.task_map[task_id]['completion_reason'] = completion_reason
+                self.task_map[task_id]['completion_score'] = summary.get('completion_score')
                 self._save_task_status(task_id, {
                     'state': result_flag,
                     'state_display': self.current_monitor.state.value,
@@ -811,6 +828,7 @@ class TaskManager:
                     'laps_completed': self.current_monitor.completed_laps,
                     'checkpoints': summary.get('checkpoints', []),
                     'loop_zones': summary.get('loop_zones', []),
+                    'completion_score': summary.get('completion_score'),
                     'last_update': end_time_str
                 })
         elif result_flag in ['completed', 'manual_completed']:
@@ -828,6 +846,4 @@ class TaskManager:
         self.auto_skip_state = {'timer_start': None, 'last_distance': None, 'increasing_streak': 0}
         self._select_next_monitor(self.last_gps)
         return summary
-
-
 

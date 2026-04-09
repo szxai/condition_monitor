@@ -2,14 +2,14 @@
 工况定义解析器
 """
 import csv
+import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from models.condition import ConditionDefinition, GPSPoint, PathCheckpoint, LoopZone
 
 DEFAULT_SKIP_DISTANCE_M = 200.0
 DEFAULT_SKIP_TIME_S = 30.0
-MAX_DYNAMIC_POINTS = 20
 
 
 class ConditionParser:
@@ -73,7 +73,6 @@ class ConditionParser:
                     # 自动把它们组合起来。
                     # 注意：如果名称中包含多个 '-' (比如 A-B-1)，我们只剥离最后的数字部分
                     # 例如 D16-1 变为 D16, D13-2 变为 D13
-                    import re
                     # 匹配以 "-数字" 结尾的名称
                     match = re.search(r'-\d+$', raw_name)
                     if match:
@@ -139,6 +138,8 @@ class ConditionParser:
             checkpoints=checkpoints,
             loop_zones=loop_zones,
             forbidden_zones=forbidden_zones,
+            prestart_hint=ConditionParser._clean_text(row.get('Prestart_Hint')),
+            prestart_lap_hints=ConditionParser._parse_lap_hints(row, 'Prestart'),
             required_laps=required_laps,
             skip_distance_threshold_m=skip_distance,
             skip_time_threshold_s=skip_time,
@@ -154,7 +155,15 @@ class ConditionParser:
         for prefix in legacy_prefixes:
             point = ConditionParser._parse_point_optional(row, prefix)
             if point:
-                checkpoints.append(PathCheckpoint(name=prefix, zone=point, required=True))
+                checkpoints.append(
+                    PathCheckpoint(
+                        name=prefix,
+                        zone=point,
+                        required=True,
+                        hint_text=ConditionParser._clean_text(row.get(f'{prefix}_Hint')),
+                        lap_hints=ConditionParser._parse_lap_hints(row, prefix)
+                    )
+                )
 
         dynamic_prefixes = []
         dynamic_prefixes += ConditionParser._collect_dynamic_prefixes(row, 'Waypoint')
@@ -166,7 +175,15 @@ class ConditionParser:
             if point:
                 required_key = f'{prefix}_Required'
                 required = ConditionParser._to_bool(row.get(required_key), default=True)
-                checkpoints.append(PathCheckpoint(name=prefix, zone=point, required=required))
+                checkpoints.append(
+                    PathCheckpoint(
+                        name=prefix,
+                        zone=point,
+                        required=required,
+                        hint_text=ConditionParser._clean_text(row.get(f'{prefix}_Hint')),
+                        lap_hints=ConditionParser._parse_lap_hints(row, prefix)
+                    )
+                )
 
         return checkpoints
 
@@ -205,23 +222,44 @@ class ConditionParser:
                 LoopZone(
                     name=prefix,
                     zone=point,
-                    required_entries=max(required_entries, 1)
+                    required_entries=max(required_entries, 1),
+                    hint_text=ConditionParser._clean_text(row.get(f'{prefix}_Hint')),
+                    lap_hints=ConditionParser._parse_lap_hints(row, prefix)
                 )
             )
         return loop_zones
 
     @staticmethod
+    def _parse_lap_hints(row: dict, prefix: str) -> Dict[int, str]:
+        lap_hints: Dict[int, str] = {}
+        pattern = re.compile(rf'^{re.escape(prefix)}_Lap(\d+)_Hint$')
+        for key, value in row.items():
+            match = pattern.match(key)
+            if not match:
+                continue
+            hint_text = ConditionParser._clean_text(value)
+            if not hint_text:
+                continue
+            lap_hints[int(match.group(1))] = hint_text
+        return lap_hints
+
+    @staticmethod
     def _collect_dynamic_prefixes(row: dict, base_name: str) -> List[str]:
         prefixes: List[str] = []
-        for idx in range(1, MAX_DYNAMIC_POINTS + 1):
-            candidates = [f"{base_name}{idx}", f"{base_name}{idx:02d}"]
-            found = None
-            for candidate in candidates:
-                if ConditionParser._has_point_columns(row, candidate):
-                    found = candidate
-                    break
-            if found:
-                prefixes.append(found)
+        pattern = re.compile(rf'^{re.escape(base_name)}(\d+)_LonLB$')
+        indexed_candidates = []
+        for key in row.keys():
+            match = pattern.match(key)
+            if not match:
+                continue
+            index_text = match.group(1)
+            candidate = f"{base_name}{index_text}"
+            if ConditionParser._has_point_columns(row, candidate):
+                indexed_candidates.append((int(index_text), candidate))
+
+        for _, candidate in sorted(indexed_candidates, key=lambda item: item[0]):
+            if candidate not in prefixes:
+                prefixes.append(candidate)
         return prefixes
 
     @staticmethod
@@ -311,4 +349,13 @@ class ConditionParser:
         if text in ('true', '1', 'yes', 'y'):
             return True
         return default
+
+    @staticmethod
+    def _clean_text(value) -> str:
+        if value is None:
+            return ''
+        text = str(value).strip()
+        if not text or text.lower() == 'nan':
+            return ''
+        return text
 

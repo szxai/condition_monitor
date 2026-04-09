@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QFrame, 
+                             QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QListWidget,
+                             QListWidgetItem, QFrame, 
                              QMessageBox, QDialog, QFormLayout, QComboBox, QLineEdit, 
                              QScrollArea, QSplitter, QGroupBox, QAction, QFileDialog, QStyleFactory, QHeaderView, QGraphicsView, QGraphicsScene)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPointF, QRectF
@@ -76,6 +77,12 @@ class ConfigDialog(QDialog):
         self.edit_skip_time.setText(str(self.config_data.get('task_options', {}).get('auto_skip', {}).get('time_threshold_s', 30.0)))
         layout.addRow("自动跳过时间 (s):", self.edit_skip_time)
 
+        self.combo_view_mode = QComboBox()
+        self.combo_view_mode.addItems(["debug", "driver"])
+        current_view_mode = self.config_data.get('ui', {}).get('default_view_mode', 'debug')
+        self.combo_view_mode.setCurrentText(current_view_mode)
+        layout.addRow("默认界面模式:", self.combo_view_mode)
+
         # Buttons
         btn_layout = QHBoxLayout()
         btn_save = QPushButton("保存并重启")
@@ -120,6 +127,9 @@ class ConfigDialog(QDialog):
             skip = opts.setdefault('auto_skip', {})
             skip['distance_threshold_m'] = float(self.edit_skip_dist.text())
             skip['time_threshold_s'] = float(self.edit_skip_time.text())
+
+            ui = self.config_data.setdefault('ui', {})
+            ui['default_view_mode'] = self.combo_view_mode.currentText()
             
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config_data, f, indent=2, ensure_ascii=False)
@@ -151,6 +161,84 @@ class TaskDetailDialog(QDialog):
         if 'completion_reason' in task_info:
             layout.addRow("完成原因:", QLabel(task_info['completion_reason']))
 
+
+class LaunchDialog(QDialog):
+    def __init__(self, config_path, parent=None):
+        super().__init__(parent)
+        self.config_path = config_path
+        self.selected_mode = "debug"
+        self.setWindowTitle("工况监控系统入口")
+        self.resize(560, 320)
+
+        layout = QVBoxLayout(self)
+
+        title = QLabel("进入系统")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        self.lbl_summary = QLabel()
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.lbl_summary)
+
+        mode_layout = QHBoxLayout()
+        self.btn_debug = QPushButton("进入调试界面")
+        self.btn_debug.clicked.connect(lambda: self.accept_mode("debug"))
+        mode_layout.addWidget(self.btn_debug)
+
+        self.btn_driver = QPushButton("进入驾驶员界面")
+        self.btn_driver.clicked.connect(lambda: self.accept_mode("driver"))
+        mode_layout.addWidget(self.btn_driver)
+        layout.addLayout(mode_layout)
+
+        action_layout = QHBoxLayout()
+        btn_settings = QPushButton("参数设置")
+        btn_settings.clicked.connect(self.open_settings)
+        action_layout.addWidget(btn_settings)
+
+        btn_login = QPushButton("账号登录(预留)")
+        btn_login.clicked.connect(self.show_login_placeholder)
+        action_layout.addWidget(btn_login)
+
+        btn_cancel = QPushButton("退出")
+        btn_cancel.clicked.connect(self.reject)
+        action_layout.addWidget(btn_cancel)
+        layout.addLayout(action_layout)
+
+        self.refresh_summary()
+
+    def refresh_summary(self):
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except Exception:
+            config = {}
+
+        gps_mode = config.get('gps', {}).get('mode', 'csv')
+        csv_file = config.get('gps', {}).get('csv_file', '')
+        port = config.get('gps', {}).get('port', '')
+        default_view = config.get('ui', {}).get('default_view_mode', 'debug')
+        source_text = csv_file if gps_mode == 'csv' else port
+        self.lbl_summary.setText(
+            f"当前 GPS 模式: {gps_mode}\n"
+            f"数据源: {source_text or '--'}\n"
+            f"默认界面: {default_view}\n"
+            "后续可在此处接入账号登录与权限分流。"
+        )
+
+    def open_settings(self):
+        dialog = ConfigDialog(self.config_path, self)
+        dialog.exec_()
+        self.refresh_summary()
+
+    def show_login_placeholder(self):
+        QMessageBox.information(self, "预留功能", "账号登录入口预留，后续可在这里接入身份验证。")
+
+    def accept_mode(self, mode: str):
+        self.selected_mode = mode
+        self.accept()
+
 # Global Exception Hook
 def exception_hook(exctype, value, traceback):
     logger.critical("Uncaught exception", exc_info=(exctype, value, traceback))
@@ -159,7 +247,7 @@ def exception_hook(exctype, value, traceback):
 sys.excepthook = exception_hook
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, view_mode: Optional[str] = None):
         super().__init__()
         logger.info("Initializing MainWindow")
         self.setWindowTitle("工况监控系统 (Condition Monitor) - PyQt Edition")
@@ -167,6 +255,7 @@ class MainWindow(QMainWindow):
         
         # Initialize System
         self.config_path = 'config/config.json'
+        self.view_mode = view_mode
         
         # GPS State for UI stability
         self.last_valid_gps = None
@@ -186,6 +275,11 @@ class MainWindow(QMainWindow):
             self.system.initialize()
             logger.info("System initialized successfully")
             self.system.running = True
+            self.view_mode = self.view_mode or self.system.config.get('ui', {}).get('default_view_mode', 'debug')
+            if self.view_mode == 'driver':
+                self.setWindowTitle("工况监控系统 - 驾驶员界面")
+            else:
+                self.setWindowTitle("工况监控系统 - 调试界面")
             
             # Ensure a monitor is selected if possible (for initial display)
             self.system.task_manager.ensure_monitor_selected()
@@ -200,6 +294,11 @@ class MainWindow(QMainWindow):
         # Central Widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
+        if self.view_mode == 'driver':
+            self._init_driver_ui(central_widget)
+            self.update_queue()
+            self._queue_initialized = True
+            return
         main_layout = QHBoxLayout(central_widget)
         
         # Splitter for Left (Execution) and Right (Queue)
@@ -259,6 +358,9 @@ class MainWindow(QMainWindow):
         self.lbl_laps = QLabel("圈数: -- / --")
         self.lbl_laps.setFont(QFont("Arial", 12))
         progress_layout.addWidget(self.lbl_laps)
+        self.lbl_score = QLabel("评分: --")
+        self.lbl_score.setFont(QFont("Arial", 12))
+        progress_layout.addWidget(self.lbl_score)
         self.lbl_start_flag = QLabel("起点: 未到达")
         self.lbl_start_flag.setFont(QFont("Arial", 12))
         progress_layout.addWidget(self.lbl_start_flag)
@@ -271,6 +373,19 @@ class MainWindow(QMainWindow):
         self.lbl_loops = QLabel("循环区: --")
         self.lbl_loops.setWordWrap(True)
         current_layout.addWidget(self.lbl_loops)
+
+        self.lbl_operation_hint_title = QLabel("操作提示")
+        self.lbl_operation_hint_title.setFont(QFont("Arial", 12, QFont.Bold))
+        current_layout.addWidget(self.lbl_operation_hint_title)
+
+        self.lbl_operation_hint = QLabel("等待进入起点后显示操作提示")
+        self.lbl_operation_hint.setWordWrap(True)
+        self.lbl_operation_hint.setFont(QFont("Arial", 13))
+        self.lbl_operation_hint.setStyleSheet(
+            "color: #7a4f00; background-color: #fff4d6; "
+            "border: 1px solid #f0d28a; border-radius: 4px; padding: 8px;"
+        )
+        current_layout.addWidget(self.lbl_operation_hint)
         
         current_group.setLayout(current_layout)
         left_layout.addWidget(current_group)
@@ -365,6 +480,153 @@ class MainWindow(QMainWindow):
         self.update_queue()
         self._queue_initialized = True
 
+    def _init_driver_ui(self, central_widget: QWidget):
+        main_layout = QVBoxLayout(central_widget)
+
+        header_group = QGroupBox("系统状态")
+        header_layout = QHBoxLayout()
+        self.lbl_gps = QLabel("GPS: --, --")
+        self.lbl_gps.setFont(QFont("Arial", 11, QFont.Bold))
+        header_layout.addWidget(self.lbl_gps)
+        self.lbl_speed_alt = QLabel("Speed: -- km/h | Alt: -- m")
+        self.lbl_speed_alt.setFont(QFont("Arial", 11))
+        header_layout.addWidget(self.lbl_speed_alt)
+        header_layout.addStretch()
+        self.lbl_message = QLabel("系统就绪")
+        self.lbl_message.setStyleSheet("color: gray; font-style: italic;")
+        header_layout.addWidget(self.lbl_message)
+        header_group.setLayout(header_layout)
+        main_layout.addWidget(header_group)
+
+        body_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(body_splitter, 1)
+
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setSpacing(16)
+        body_splitter.addWidget(left_panel)
+
+        current_group = QGroupBox("当前执行工况")
+        current_layout = QVBoxLayout()
+        current_layout.setSpacing(16)
+
+        self.lbl_current_task = QLabel("等待开始...")
+        self.lbl_current_task.setFont(QFont("Arial", 34, QFont.Bold))
+        self.lbl_current_task.setAlignment(Qt.AlignCenter)
+        self.lbl_current_task.setStyleSheet("color: #0b4f9c;")
+        current_layout.addWidget(self.lbl_current_task)
+
+        self.lbl_current_desc = QLabel("")
+        self.lbl_current_desc.setFont(QFont("Arial", 28, QFont.Bold))
+        self.lbl_current_desc.setAlignment(Qt.AlignCenter)
+        self.lbl_current_desc.setWordWrap(True)
+        self.lbl_current_desc.setStyleSheet("color: #173d6b; padding: 10px 20px;")
+        current_layout.addWidget(self.lbl_current_desc)
+
+        self.lbl_next_task = QLabel("下个任务: --")
+        self.lbl_next_task.setFont(QFont("Arial", 18))
+        self.lbl_next_task.setAlignment(Qt.AlignCenter)
+        self.lbl_next_task.setStyleSheet("color: #5d6d7e;")
+        current_layout.addWidget(self.lbl_next_task)
+
+        status_group = QGroupBox("执行状态")
+        status_layout = QHBoxLayout()
+        status_layout.setSpacing(18)
+        self.lbl_laps = QLabel("圈数: -- / --")
+        self.lbl_laps.setFont(QFont("Arial", 18, QFont.Bold))
+        self.lbl_laps.setAlignment(Qt.AlignCenter)
+        self.lbl_laps.setStyleSheet("background:#eef4ff; border-radius:8px; padding:12px;")
+        status_layout.addWidget(self.lbl_laps)
+        self.lbl_score = QLabel("评分: --")
+        self.lbl_score.setFont(QFont("Arial", 18, QFont.Bold))
+        self.lbl_score.setAlignment(Qt.AlignCenter)
+        self.lbl_score.setStyleSheet("background:#eef4ff; border-radius:8px; padding:12px;")
+        status_layout.addWidget(self.lbl_score)
+        self.lbl_start_flag = QLabel("起点: --")
+        self.lbl_start_flag.setFont(QFont("Arial", 18, QFont.Bold))
+        self.lbl_start_flag.setAlignment(Qt.AlignCenter)
+        self.lbl_start_flag.setStyleSheet("background:#eef4ff; border-radius:8px; padding:12px;")
+        status_layout.addWidget(self.lbl_start_flag)
+        self.lbl_end_flag = QLabel("终点: --")
+        self.lbl_end_flag.setFont(QFont("Arial", 18, QFont.Bold))
+        self.lbl_end_flag.setAlignment(Qt.AlignCenter)
+        self.lbl_end_flag.setStyleSheet("background:#eef4ff; border-radius:8px; padding:12px;")
+        status_layout.addWidget(self.lbl_end_flag)
+        status_group.setLayout(status_layout)
+        current_layout.addWidget(status_group)
+
+        self.lbl_loops = QLabel("循环区: --")
+        self.lbl_loops.setFont(QFont("Arial", 18))
+        self.lbl_loops.setWordWrap(True)
+        self.lbl_loops.setStyleSheet("background:#f7f9fb; border:1px solid #d8e1ea; border-radius:8px; padding:14px;")
+        current_layout.addWidget(self.lbl_loops)
+
+        self.lbl_operation_hint_title = QLabel("驾驶指导")
+        self.lbl_operation_hint_title.setFont(QFont("Arial", 22, QFont.Bold))
+        self.lbl_operation_hint_title.setAlignment(Qt.AlignCenter)
+        current_layout.addWidget(self.lbl_operation_hint_title)
+
+        self.lbl_operation_hint = QLabel("等待工况提示...")
+        self.lbl_operation_hint.setWordWrap(True)
+        self.lbl_operation_hint.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.lbl_operation_hint.setFont(QFont("Arial", 30, QFont.Bold))
+        self.lbl_operation_hint.setMinimumHeight(360)
+        self.lbl_operation_hint.setStyleSheet(
+            "color: #402000; background-color: #fff4d6; "
+            "border: 3px solid #e7ba52; border-radius: 14px; padding: 26px;"
+        )
+        current_layout.addWidget(self.lbl_operation_hint, 1)
+
+        driver_control_layout = QHBoxLayout()
+        btn_skip = QPushButton("⏭ 跳过当前")
+        btn_skip.setMinimumHeight(52)
+        btn_skip.clicked.connect(self.skip_current)
+        driver_control_layout.addWidget(btn_skip)
+
+        btn_complete = QPushButton("✅ 人工完成")
+        btn_complete.setMinimumHeight(52)
+        btn_complete.clicked.connect(self.manual_complete)
+        driver_control_layout.addWidget(btn_complete)
+        current_layout.addLayout(driver_control_layout)
+
+        current_group.setLayout(current_layout)
+        left_layout.addWidget(current_group, 1)
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setSpacing(12)
+        body_splitter.addWidget(right_panel)
+
+        queue_group = QGroupBox("工况队列")
+        queue_layout = QVBoxLayout()
+        self.list_queue = QListWidget()
+        self.list_queue.setSpacing(14)
+        self.list_queue.setSelectionMode(QListWidget.NoSelection)
+        self.list_queue.setFocusPolicy(Qt.NoFocus)
+        self.list_queue.setStyleSheet(
+            "QListWidget { background: #f6f8fb; border: none; padding: 8px; }"
+            "QListWidget::item { border: none; margin: 4px; }"
+        )
+        queue_layout.addWidget(self.list_queue)
+        queue_group.setLayout(queue_layout)
+        right_layout.addWidget(queue_group, 1)
+
+        body_splitter.setSizes([1350, 450])
+        body_splitter.setStretchFactor(0, 5)
+        body_splitter.setStretchFactor(1, 2)
+
+        toolbar = self.addToolBar("Main")
+        action_config = QAction("⚙ 参数设置", self)
+        action_config.triggered.connect(self.open_settings)
+        toolbar.addAction(action_config)
+        toolbar.addSeparator()
+        action_import = QAction("📥 接收任务文件", self)
+        action_import.triggered.connect(self.import_task)
+        toolbar.addAction(action_import)
+        action_export = QAction("📤 发送工况文件", self)
+        action_export.triggered.connect(self.export_status)
+        toolbar.addAction(action_export)
+
     def update_loop(self):
         if not self.system.running:
             return
@@ -397,13 +659,29 @@ class MainWindow(QMainWindow):
                     self.gps_connected = False
             
             if display_gps:
-                update_info = self.system.task_manager.update(display_gps)
+                if gps:
+                    update_info = self.system.task_manager.update(gps)
+                else:
+                    current_monitor = self.system.task_manager.current_monitor
+                    update_info = {
+                        'current_task': current_monitor.get_progress_info() if current_monitor else None,
+                        'next_task': self.system.task_manager.pending_tasks[0]
+                        if getattr(self.system.task_manager, 'pending_tasks', None) else None,
+                        'state_changed': False,
+                        'message': ''
+                    }
                 self.update_ui(display_gps, update_info)
             else:
                 # No GPS yet, but we might want to update UI for initial task state
                 if self.system.task_manager.current_monitor:
                      info = self.system.task_manager.current_monitor.get_progress_info()
-                     update_info = {'current_task': info}
+                     update_info = {
+                         'current_task': info,
+                         'next_task': self.system.task_manager.pending_tasks[0]
+                         if getattr(self.system.task_manager, 'pending_tasks', None) else None,
+                         'state_changed': False,
+                         'message': ''
+                     }
                      self.update_ui(None, update_info)
         except Exception as e:
             logger.error(f"Error in update loop: {e}", exc_info=True)
@@ -430,10 +708,8 @@ class MainWindow(QMainWindow):
         # Next Task
         next_task_id = update_info.get('next_task')
         next_task_name = "--"
-        if next_task_id and self.system.task_manager.task_map:
-            task_info = self.system.task_manager.task_map.get(next_task_id)
-            if task_info:
-                next_task_name = task_info.get('name', next_task_id)
+        if next_task_id:
+            next_task_name = self._resolve_task_display_name(next_task_id)
         
         self.lbl_next_task.setText(f"下个任务: {next_task_name}")
         
@@ -453,6 +729,9 @@ class MainWindow(QMainWindow):
             completed = current_task.get('laps_completed', 0)
             required = current_task.get('required_laps', 1)
             self.lbl_laps.setText(f"圈数: {completed} / {required}")
+            score = current_task.get('completion_score')
+            score_text = "--" if score is None else f"{float(score):.1f}"
+            self.lbl_score.setText(f"评分: {score_text}")
             
             # Update condition access
             cond_list = self.system.task_manager.conditions_map.get(current_task.get('condition'))
@@ -487,27 +766,77 @@ class MainWindow(QMainWindow):
                 self.lbl_loops.setText(" | ".join(loops_text))
             else:
                 self.lbl_loops.setText("无循环区")
+
+            operation_hint = (current_task.get('operation_hint') or '').strip()
+            current_lap = current_task.get('current_lap', 1)
+            target_name = current_task.get('operation_hint_target') or ''
+            source_name = current_task.get('operation_hint_source') or ''
+            if operation_hint:
+                prefix = f"第 {current_lap} 圈"
+                if source_name == 'prestart':
+                    prefix = "准备阶段"
+                elif source_name == 'checkpoint' and target_name:
+                    prefix += f" · 当前关键点 {target_name}"
+                elif source_name == 'upcoming_checkpoint' and target_name:
+                    prefix += f" · 下一个必经点 {target_name}"
+                elif source_name == 'loop_zone' and target_name:
+                    prefix += f" · 循环区 {target_name}"
+                self._set_operation_hint_text(f"{prefix}\n{operation_hint}")
+            else:
+                state_text = current_task.get('state', '')
+                if state_text in [ConditionState.COMPLETED.value, ConditionState.MANUAL_COMPLETED.value]:
+                    self._set_operation_hint_text("当前工况已完成")
+                else:
+                    self._set_operation_hint_text("当前暂无配置的操作提示")
                 
-            if task_changed or not hasattr(self, '_map_scale_ready'):
-                self._compute_map_scale(current_task, gps)
-            self._update_map(gps, current_task)
-            self.update_checkpoints(current_task.get('checkpoints', []))
+            if self.view_mode == 'debug':
+                if task_changed or not hasattr(self, '_map_scale_ready'):
+                    self._compute_map_scale(current_task, gps)
+                self._update_map(gps, current_task)
+                self.update_checkpoints(current_task.get('checkpoints', []))
         else:
             self.lbl_current_task.setText("无任务正在执行")
             self.lbl_current_desc.setText("")
             self.lbl_laps.setText("圈数: -- / --")
+            self.lbl_score.setText("评分: --")
             self.lbl_start_flag.setText("起点: --")
             self.lbl_end_flag.setText("终点: --")
             self.lbl_loops.setText("循环区: --")
-            self.map_scene.clear()
-            self.tree_checkpoints.clear()
+            self._set_operation_hint_text("等待工况提示...")
+            if hasattr(self, 'map_scene'):
+                self.map_scene.clear()
+            if hasattr(self, 'tree_checkpoints'):
+                self.tree_checkpoints.clear()
             
         # Task Queue (Refresh only on significant changes)
         if state_changed or task_changed or not hasattr(self, '_queue_initialized'):
             self.update_queue()
             self._queue_initialized = True
 
+    def _set_operation_hint_text(self, text: str):
+        self.lbl_operation_hint.setText(text)
+        if self.view_mode != 'driver':
+            return
+
+        text_len = len(text.strip())
+        line_count = max(1, text.count('\n') + 1)
+        if text_len <= 18 and line_count <= 2:
+            size = 34
+        elif text_len <= 36 and line_count <= 3:
+            size = 30
+        elif text_len <= 70:
+            size = 26
+        elif text_len <= 120:
+            size = 22
+        else:
+            size = 18
+
+        self.lbl_operation_hint.setFont(QFont("Arial", size, QFont.Bold))
+
     def _compute_map_scale(self, current_task: dict, gps: Optional[GPSData]):
+        if not hasattr(self, 'map_view'):
+            self._map_scale_ready = False
+            return
         cond_id = current_task.get('condition')
         cond_list = self.system.task_manager.conditions_map.get(cond_id)
         
@@ -589,6 +918,8 @@ class MainWindow(QMainWindow):
         self._map_scale_ready = True
 
     def _update_map(self, gps: Optional[GPSData], current_task: dict):
+        if not hasattr(self, 'map_scene'):
+            return
         self.map_scene.clear()
         cond_id = current_task.get('condition')
         cond_list = self.system.task_manager.conditions_map.get(cond_id)
@@ -683,6 +1014,8 @@ class MainWindow(QMainWindow):
             self.map_scene.setSceneRect(self._scene_rect)
 
     def update_checkpoints(self, checkpoints):
+        if not hasattr(self, 'tree_checkpoints'):
+            return
         current_count = self.tree_checkpoints.topLevelItemCount()
         new_count = len(checkpoints)
         if current_count != new_count:
@@ -718,11 +1051,61 @@ class MainWindow(QMainWindow):
         # This can be optimized to not clear every time
         # Get all tasks from task manager
         tm = self.system.task_manager
+        all_tasks = tm.get_all_tasks_status()
+
+        if self.view_mode == 'driver':
+            self.list_queue.clear()
+            current_task_id = None
+            if self.system.task_manager.current_monitor:
+                current_task_id = getattr(self.system.task_manager.current_monitor, 'task_id', None)
+            for task in all_tasks:
+                task_id = task.get('task_id', '')
+                state = task.get('state', 'pending')
+                name = task.get('name', task.get('condition', 'Unknown'))
+                description = task.get('description', '')
+                if not description and self.system.task_manager.task_map:
+                    task_info = self.system.task_manager.task_map.get(task_id, {})
+                    description = task_info.get('description', '')
+                laps_comp = task.get('laps_completed', 0)
+                req_laps = task.get('required_laps', 1)
+                completion_score = task.get('completion_score')
+                is_current_task = bool(current_task_id and task_id == current_task_id)
+                display_state = state
+                if state == 'pending':
+                    display_state = '等待开始'
+                elif state == 'in_progress':
+                    display_state = '正在执行'
+                elif state in ['completed', '已完成']:
+                    display_state = '已完成'
+                elif state == 'skipped':
+                    display_state = '已跳过'
+                elif state in ['manual_completed', '人工完成']:
+                    display_state = '人工完成'
+                elif state == 'not_started':
+                    display_state = '未开始'
+                if display_state in ['未开始', '等待开始'] and laps_comp > 0:
+                    display_state = '等待开始下一圈'
+
+                card_widget, card_height = self._build_driver_queue_card(
+                    state=state,
+                    display_state=display_state,
+                    name=name,
+                    description=description,
+                    task_id=task_id,
+                    laps_comp=laps_comp,
+                    req_laps=req_laps,
+                    completion_score=completion_score,
+                    is_current_task=is_current_task,
+                )
+                item = QListWidgetItem()
+                item.setSizeHint(card_widget.sizeHint())
+                if card_height > 0:
+                    item.setSizeHint(item.sizeHint().expandedTo(card_widget.minimumSizeHint()))
+                self.list_queue.addItem(item)
+                self.list_queue.setItemWidget(item, card_widget)
+            return
         
         self.tree_queue.clear()
-        
-        # 使用统一的方法获取所有任务状态
-        all_tasks = tm.get_all_tasks_status()
         
         for task in all_tasks:
             item = QTreeWidgetItem(self.tree_queue)
@@ -773,6 +1156,97 @@ class MainWindow(QMainWindow):
             elif state == 'skipped':
                 for col in range(3):
                     item.setForeground(col, QColor("gray"))
+
+    def _build_driver_queue_card(self, state: str, display_state: str, name: str, description: str, task_id: str,
+                                 laps_comp: int, req_laps: int, completion_score, is_current_task: bool = False):
+        if is_current_task or state == 'in_progress':
+            bg = "#e6f3ff"
+            title_color = "#0b4f9c"
+            body_color = "#17324d"
+            border = "1px solid #b8d5ff"
+        elif state in ['manual_completed', '人工完成', 'completed', '已完成']:
+            bg = "#edf8ea"
+            title_color = "#2d7a32"
+            body_color = "#205a2a"
+            border = "1px solid #cde6c8"
+        elif state == 'skipped':
+            bg = "#f1f3f5"
+            title_color = "#6b7280"
+            body_color = "#6b7280"
+            border = "1px solid #dde2e8"
+        elif state in ['pending', 'not_started'] or display_state in ['等待开始', '等待开始下一圈', '未开始']:
+            bg = "#fff8e7"
+            title_color = "#9a6700"
+            body_color = "#6f4f00"
+            border = "none"
+        else:
+            bg = "#ffffff"
+            title_color = "#1f4fbf"
+            body_color = "#17324d"
+            border = "1px solid #d9e2ec"
+
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{ background: {bg}; border: {border}; border-radius: 12px; }}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+
+        lbl_state = QLabel(display_state)
+        lbl_state.setFont(QFont("Arial", 14, QFont.Bold))
+        lbl_state.setStyleSheet(f"color: {title_color}; border: none;")
+        layout.addWidget(lbl_state)
+
+        lbl_name = QLabel(name)
+        lbl_name.setFont(QFont("Arial", 14, QFont.Bold))
+        lbl_name.setWordWrap(True)
+        lbl_name.setStyleSheet(f"color: {body_color}; border: none;")
+        layout.addWidget(lbl_name)
+
+        if description:
+            lbl_desc = QLabel(description)
+            lbl_desc.setFont(QFont("Arial", 12))
+            lbl_desc.setWordWrap(True)
+            lbl_desc.setStyleSheet(f"color: {body_color}; border: none;")
+            layout.addWidget(lbl_desc)
+
+        score_text = "--" if completion_score is None else f"{float(completion_score):.1f}"
+        lbl_meta = QLabel(f"任务ID: {task_id}    圈数: {laps_comp}/{req_laps}    评分: {score_text}")
+        lbl_meta.setFont(QFont("Arial", 11))
+        lbl_meta.setStyleSheet(f"color: {body_color}; border: none;")
+        layout.addWidget(lbl_meta)
+
+        return card, card.sizeHint().height()
+
+    def _resolve_task_display_name(self, task_id: str) -> str:
+        tm = self.system.task_manager
+        if not task_id:
+            return "--"
+
+        task_info = tm.task_map.get(task_id, {}) if tm.task_map else {}
+        description = (task_info.get('description') or '').strip()
+        if description:
+            return description
+
+        name = task_info.get('name', '')
+
+        # "新任务" 常是占位名，优先显示真实工况名称
+        placeholder_names = {'新任务', 'new task', 'task'}
+        if name and name.strip().lower() not in placeholder_names:
+            return name.strip()
+
+        condition_id = task_info.get('condition_id')
+        if condition_id and tm.conditions_map.get(condition_id):
+            cond_list = tm.conditions_map.get(condition_id)
+            cond = cond_list[0] if isinstance(cond_list, list) and cond_list else cond_list
+            if cond:
+                cond_desc = getattr(cond, 'description', '')
+                if cond_desc:
+                    return cond_desc
+                if getattr(cond, 'condition_name', None):
+                    return cond.condition_name
+        return task_id
                     
     def show_task_details(self, item, column):
         task_id = item.text(2)
@@ -817,8 +1291,10 @@ class MainWindow(QMainWindow):
                  self.lbl_current_task.setText("等待开始...")
                  self.lbl_current_desc.setText("")
                  self.lbl_laps.setText("圈数: -- / --")
-                 self.map_scene.clear()
-                 self.tree_checkpoints.clear()
+                 if hasattr(self, 'map_scene'):
+                     self.map_scene.clear()
+                 if hasattr(self, 'tree_checkpoints'):
+                     self.tree_checkpoints.clear()
             
             QMessageBox.information(self, "成功", "任务已重置")
 
@@ -863,8 +1339,11 @@ if __name__ == "__main__":
     # Increase font size globally
     font = QFont("Arial", 10)
     app.setFont(font)
-    
-    window = MainWindow()
-    # Default to maximized (fullscreen)
+
+    launch = LaunchDialog('config/config.json')
+    if launch.exec_() != QDialog.Accepted:
+        sys.exit(0)
+
+    window = MainWindow(view_mode=launch.selected_mode)
     window.showMaximized()
     sys.exit(app.exec_())
