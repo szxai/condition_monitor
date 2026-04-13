@@ -1,187 +1,141 @@
-# 系统架构说明
+# 系统架构与数据流（2026-04）
 
-## 系统设计原则
+## 1. 系统目标
+- 实时读取 GPS（USB 或 CSV），按工况模板判断任务是否开始、进行、完成、失败或跳过。
+- 支持多任务编排（外部任务清单或传统工况队列）。
+- 同时支持 CLI 工作流与 GUI 工作流（调试界面/驾驶员界面）。
+- 输出可持久化状态与事件 JSON，便于外部系统集成。
 
-1. **识别准确**：通过多关键点验证确保工况识别准确
-2. **实时性强**：低延迟GPS数据读取和状态更新
-3. **逻辑清晰**：明确的状态转换和任务管理
+## 2. 目录与文件职责
 
-## 核心模块
+### 2.1 入口与界面
+- `main.py`：CLI 主入口，负责系统生命周期、命令行参数、交互命令。
+- `gui_main_qt.py`：GUI 主入口，包含入口页、调试界面、驾驶员界面、语音播报逻辑。
+- `condition_hint_editor.py`：工况模板编辑器（点位、圈次提示、地图框选）。
+- `task_creator_app.py`：任务清单编辑器。
 
-### 1. 数据模型层 (`models/`)
+### 2.2 核心业务
+- `monitor/condition_monitor.py`：单工况/组合工况状态机与进度提示生成核心。
+- `monitor/task_manager.py`：任务调度、状态持久化、跳过/手动完成、输出 JSON 聚合。
 
-#### `condition.py`
-- `GPSPoint`: GPS坐标范围定义
-- `PathCheckpoint`: 单个途径点定义（名称、范围、是否必经）
-- `ConditionDefinition`: 工况完整定义（多途径点、禁行区、优先级、跳过阈值）
+### 2.3 数据模型与解析
+- `models/condition.py`：工况模型（起终点、关键点、循环区、提示、计分基准时间）。
+- `models/gps_data.py`：GPS 采样数据模型。
+- `utils/condition_parser.py`：工况 CSV 解析器（动态点位、分圈提示、开始前提示）。
+- `utils/task_list_parser.py`：任务清单解析与兼容处理。
 
-#### `gps_data.py`
-- `GPSData`: GPS数据点模型
+### 2.4 设备与基础设施
+- `gps/gps_reader.py`：GPS 读取抽象与实现（USB 串口 / CSV 回放）。
+- `utils/json_output.py`：事件 JSON 构建与保存。
+- `utils/logger.py`：日志初始化。
+- `utils/command_listener.py`：CLI 交互输入监听线程。
 
-### 2. GPS读取层 (`gps/`)
+### 2.5 配置与数据文件
+- `config/config.json`：运行配置（GPS、任务、UI、语音开关）。
+- `config/tasks_list.json`：任务模板（执行顺序与任务描述，不含实时状态）。
+- `referencePosition/ConditionExtendedTemplate.csv`：工况模板主文件。
+- `output/task_status.json`：实时任务状态与事件输出文件。
 
-#### `gps_reader.py`
-- `GPSReader`: 抽象基类
-- `USBGPSReader`: USB GPS读取器（Ubuntu）
-- `CSVGPSReader`: CSV模拟读取器（Windows）
-- `create_gps_reader()`: 工厂函数
+## 3. 核心类与主要方法
 
-**设计特点**：
-- 统一接口，支持多种数据源
-- 自动检测运行环境
-- CSV模式支持速率控制
+### 3.1 `ConditionMonitor`（`monitor/condition_monitor.py`）
+- `update(gps)`：按状态机推进单工况状态。
+- `get_progress_info()`：输出界面实时展示数据（提示、圈数、检查点、循环区）。
+- `get_summary()`：输出工况总结（时间、速度、距离、评分、原因）。
+- `_calculate_completion_score(duration_seconds)`：按 `Ref_Time_Min/Max` 计算完成评分。
 
-### 3. 工具层 (`utils/`)
+### 3.2 `CompositeConditionMonitor`（`monitor/condition_monitor.py`）
+- 用于同名工况多候选区域场景。
+- 未锁定前并行观察，锁定后仅跟踪激活工况。
+- `get_progress_info()` 和 `get_summary()` 对外保持统一结构。
 
-#### `condition_parser.py`
-- `ConditionParser`: CSV工况定义解析器
+### 3.3 `TaskManager`（`monitor/task_manager.py`）
+- `update(gps)`：驱动当前任务更新、触发状态持久化、产出 UI 数据。
+- `get_all_tasks_status()`：汇总已完成/进行中/待执行任务状态。
+- `_finalize_current_monitor(result_flag)`：任务结束收尾、写执行日志、输出 JSON。
+- `skip_current(...)` / `complete_current(...)`：人工跳过与人工完成。
 
-**功能**：
-- 解析标准格式CSV
-- 处理缺失字段（兼容性）
-- 数据验证
+### 3.4 `MainWindow`（`gui_main_qt.py`）
+- `update_loop()`：定时读取 GPS，驱动任务更新和 UI 刷新。
+- `update_ui(gps, update_info)`：更新当前任务、队列、地图、提示、评分。
+- `update_queue()`：按模式渲染任务队列（调试表格 / 驾驶员卡片）。
+- `_set_operation_hint_text()` / `_maybe_speak_operation_hint()`：提示显示与语音播报解耦。
 
-### 4. 监控层 (`monitor/`)
+## 4. 状态机与业务规则
 
-#### `condition_monitor.py`
-- `ConditionState`: `NOT_STARTED / IN_PROGRESS / COMPLETING / COMPLETED / FAILED / SKIPPED`
-- `ConditionMonitor`: 负责开始检测、途径点与循环区域验证、多圈计数、禁行区检测、速度统计、跳过标记
+### 4.1 工况状态
+- `NOT_STARTED`：等待进入起点。
+- `IN_PROGRESS`：已进入工况流程。
+- `COMPLETING`：已达终点，等待完成确认。
+- `COMPLETED`：自动完成。
+- `MANUAL_COMPLETED`：人工完成。
+- `FAILED`：失败（例如进入禁行区）。
+- `SKIPPED`：跳过。
 
-**状态转换逻辑**：
-```
-NOT_STARTED → IN_PROGRESS → COMPLETING → COMPLETED
-        ↑          ↓             ↓
-        │        FAILED        SKIPPED
-        └─────────────── 自动跳过/人工跳过
-```
+### 4.2 关键规则
+- 进入 `Start` 区域触发开始。
+- `Waypoint` 按顺序校验（区分必经与参考）。
+- `LoopZone` 按配置统计进入次数。
+- 满足条件后进入 `End` 并完成确认。
+- 多圈任务未完成总圈数时回到等待下一圈。
+- 自动跳过基于“距离起点阈值 + 时间阈值 + 远离趋势”联合判定。
 
-**关键点与循环流程**：
-1. Start: 进入起点范围立即进入 `IN_PROGRESS`
-2. Waypoints: 顺序检测所有必经点（支持参考点用于保持“进行中”状态）
-3. LoopZones: 对每个 `LoopZoneNN` 统计进入次数，需达到 `LoopZoneNN_Count` 才允许进入终点
-4. Forbidden: 若进入禁行区立即 `FAILED`
-5. End: 所有必经点与循环区域达标且进入终点 → `COMPLETING`
-6. Multi-lap: 每次完成 End 后计 1 圈，直到 `RequiredLaps` 圈全部完成才进入 `COMPLETED`
+## 5. 提示与语音逻辑
 
-#### `task_manager.py`
-- `TaskManager`: 任务调度核心
+### 5.1 提示来源
+- 开始前提示：`Prestart_Hint` / `Prestart_LapNN_Hint`
+- 关键点提示：`<Point>_Hint` / `<Point>_LapNN_Hint`
+- 循环区提示：`<LoopZone>_Hint` / `<LoopZone>_LapNN_Hint`
 
-**功能**：
-- 支持 `sequential / nearest / priority` 三种调度策略
-- `preferred_conditions`：允许手动指定优先执行的工况
-- 自动/人工跳过：可由系统根据距离阈值触发，也可通过命令行手动触发，均把工况排队尾
-- 记录执行日志（开始/结束时间、平均/最大/最小车速、行驶距离、跳过/失败原因）
+### 5.2 语音播报行为（当前实现）
+- 提示变化才播报（去重 + 限频）。
+- 到达起点单独播报“到达起点”。
+- 不播报“下一个关键点”引导，仅播报操作内容本体。
+- 准备阶段仅播报提示第一行。
+- 跨平台后端：
+  - Windows：`System.Speech`（PowerShell）
+  - Linux：`spd-say` 优先，`espeak` 兜底
 
-### 5. 主程序 (`main.py`)
+## 6. 评分规则（全工作流生效）
+- 输入：工况实际完成时长 `duration_seconds`，模板基准 `Ref_Time_Min/Ref_Time_Max`。
+- 规则：
+  - 时长在区间内：`100.0`
+  - 低于下限或高于上限：按超出比例扣分，最低 `0.0`
+- 落地位置：
+  - 实时状态：`task_status.json` 的 `completion_score`
+  - 汇总输出：`output_task_status(...)` 的 `current_task/all_tasks_status`
+  - 界面展示：当前任务评分 + 驾驶员队列卡片评分
 
-#### `ConditionMonitorSystem`
-- 系统初始化和配置
-- 主监控循环
-- 状态输出和日志
-- 交互命令处理（`status`/`skip`/`log`/`next`/`exit`）
+## 7. 数据流（端到端）
 
-#### `utils/command_listener.py`
-- 后台线程，阻塞式读取控制台输入
-- 与 `ConditionMonitorSystem` 协同，实现人工跳过和实时状态查询
-
-## 数据流
-
-```
-GPS设备/CSV文件
-    ↓
-GPSReader (USB/CSV)
-    ↓
-GPSData
-    ↓
-TaskManager（调度、跳过判定、日志）
-    ↓
-ConditionMonitor（途径点/速度/禁行区）
-    ↓
-状态更新 + 统计输出
-```
-
-## 状态监控逻辑
-
-### 开始检测
-1. GPS进入 `Start` 范围 → 立即 `IN_PROGRESS`
-2. 记录开始时间，开启速度/距离统计
-
-### 进度监控
-- 顺序检查所有 `Required=TRUE` 的 `WaypointNN`
-- 循环区域 `LoopZoneNN` 的进入次数必须达到 `LoopZoneNN_Count`
-- `Required=FALSE` 的途径点用于保持“进行中”状态
-- 检测是否进入任意 `ForbiddenNN` 区域（触发 `FAILED`）
-
-### 完成检测
-1. 所有必经点与循环区域次数已满足
-2. GPS进入 `End` 范围 → `COMPLETING`
-3. 在 `End` 范围停留 ≥0.5 s 视为完成一圈
-4. 若已完成 `RequiredLaps` 圈 → `COMPLETED`，否则回到 `NOT_STARTED` 等待下一圈
-
-### 自动跳过
-1. TaskManager 持续计算车辆与当前工况起点中心的距离
-2. 若距离连续增大且超过阈值，并持续指定时间 → 标记为 `SKIPPED`
-3. 工况被重置并移动到任务列表末端
-
-## 配置系统
-
-### 配置文件结构
-```json
-{
-  "gps": { ... },
-  "conditions": { "file": "..." },
-  "task_list": ["CY", "AA"],
-  "task_options": {
-    "mode": "nearest",
-    "preferred_conditions": ["ST"],
-    "auto_skip": {
-      "enabled": true,
-      "distance_threshold_m": 200,
-      "time_threshold_s": 30
-    }
-  }
-}
+```text
+GPS设备/CSV
+  -> gps_reader.read()
+  -> GPSData
+  -> TaskManager.update()
+     -> ConditionMonitor.update()
+     -> progress_info / summary / completion_score
+     -> task_status.json 持久化
+  -> GUI update_ui()
+     -> 当前任务、队列、地图、提示、语音
+  -> json_output.output_task_status()
+     -> output/task_status.json 事件输出
 ```
 
-### 命令行参数
-- `--config`: 配置文件路径
-- `--gps-mode`: GPS模式
-- `--csv-file`: CSV文件路径
-- `--rate`: CSV读取速率
-- `--conditions-file`: 工况定义文件
-- `--task-mode`: 调度模式（sequential/nearest/priority）
-- `--preferred`: 逗号分隔的优先工况列表
-- `--auto-skip-distance` / `--auto-skip-time` / `--disable-auto-skip`
-- `--no-interactive`: 关闭命令监听线程（默认开启，可输入 `status/skip/log/next/exit`）
+## 8. 配置字段说明（关键）
+- `gps.mode`：`csv` / `usb`
+- `gps.csv_file` / `gps.rate`：CSV 回放源与速率
+- `gps.port` / `gps.baudrate`：串口参数
+- `conditions.file`：工况模板
+- `task_list_file`：任务清单
+- `status_output_file`：状态输出文件
+- `task_options.auto_skip.*`：自动跳过策略
+- `ui.default_view_mode`：默认界面模式
+- `ui.voice_prompt_enabled`：语音播报开关
 
-## 扩展性
-
-### 添加新的GPS数据源
-1. 继承 `GPSReader` 基类
-2. 实现 `read()` 和 `close()` 方法
-3. 在 `create_gps_reader()` 中注册
-
-### 自定义监控逻辑
-1. 修改 `ConditionMonitor.update()` 方法
-2. 调整状态转换条件
-3. 添加新的状态或验证规则
-
-## 性能考虑
-
-1. **GPS读取频率**：默认0.1秒循环，可根据需要调整
-2. **状态输出**：仅在状态发生变化或产生总结时打印详细信息
-3. **状态摘要**：默认每5秒输出一次，可通过代码调整
-4. **统计开销**：速度/距离统计仅在工况开始后进行，避免多余计算
-
-## 错误处理
-
-1. **GPS读取失败**：输出错误，继续尝试
-2. **工况定义错误**：跳过无效行，输出警告
-3. **状态异常**：自动重置或标记失败
-
-## 测试建议
-
-1. **单元测试**：各模块独立测试
-2. **集成测试**：使用CSV模拟数据测试完整流程
-3. **实际测试**：使用真实GPS设备验证
+## 9. 开发与扩展建议
+- 新增 GPS 源：实现 `GPSReader` 接口并在工厂注册。
+- 新增状态规则：优先在 `ConditionMonitor.update()` 内扩展，保持 `get_progress_info()` 输出结构稳定。
+- 新增 UI 展示项：优先通过 `update_info` 通道扩展，避免直接耦合内部对象。
+- 新增输出字段：同步更新 `summary`、`task_status` 与 GUI 显示，保持链路一致。
 

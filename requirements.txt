@@ -1,7 +1,10 @@
-# Core dependencies
-pyserial>=3.5         # Serial communication for USB GPS
-PyQt5>=5.15.0         # GUI framework
+# Core runtime dependencies
+pyserial>=3.5         # USB GPS serial communication
+PyQt5>=5.15.0         # GUI framework (main UI + editors)
+pandas>=1.5.0         # CSV/template editing utilities
 
-# Note for Linux users:
-# You may need to install system dependencies for PyQt5:
-# sudo apt-get install libxcb-xinerama0
+# Linux / Ubuntu system packages (not pip packages):
+# 1) PyQt5 runtime libraries
+#    sudo apt-get install -y libxcb-xinerama0
+# 2) Voice prompt backends (for gui_main_qt.py TTS)
+#    sudo apt-get install -y speech-dispatcher espeak-ng

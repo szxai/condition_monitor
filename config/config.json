@@ -3,7 +3,7 @@
     "mode": "csv",
     "port": "/dev/ttyACM0",
     "baudrate": 115200,
-    "csv_file": "examples/gpsdata_examples/16hz_sampled/16hz_2025_11_27-18_12_20-1492-F-to-2025_11_27-19_21_18-2319-F.csv",
+    "csv_file": "C:/Users/77010/0_SAIC/03_HardwareDevelop/02_ConditionMonitor/examples/gpsdata_examples/2025_09_29-18_12_24-61-F-to-2025_09_29-20_15_30-1537-F_out.csv",
     "rate": 16.0
   },
   "conditions": {
@@ -23,6 +23,7 @@
   },
   "ui": {
     "interactive_commands": true,
-    "default_view_mode": "debug"
+    "default_view_mode": "debug",
+    "voice_prompt_enabled": true
   }
 }

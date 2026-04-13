@@ -2,6 +2,11 @@ import sys
 import json
 import os
 import logging
+import threading
+import queue
+import subprocess
+import time
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -23,6 +28,144 @@ from utils.logger import setup_logger
 
 # Initialize logger
 logger = setup_logger("ConditionMonitor")
+
+
+class HintVoiceSpeaker:
+    """后台语音播报器（Windows + Linux）"""
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self._backend = self._detect_backend()
+        self._queue: "queue.Queue[str]" = queue.Queue(maxsize=1)
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._current_proc: Optional[subprocess.Popen] = None
+        self._last_enqueued = ""
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+        logger.info(f"Voice backend selected: {self._backend}")
+
+    def speak(self, text: str):
+        if not self.enabled:
+            return
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return
+        if clean_text == self._last_enqueued:
+            return
+        self._last_enqueued = clean_text
+        self._clear_queue()
+        try:
+            self._queue.put_nowait(clean_text)
+        except queue.Full:
+            pass
+
+    def shutdown(self):
+        self._stop_event.set()
+        self._terminate_current_speech()
+        self._clear_queue()
+        try:
+            self._queue.put_nowait("")
+        except queue.Full:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+
+    def _worker(self):
+        while not self._stop_event.is_set():
+            try:
+                text = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            if self._stop_event.is_set():
+                break
+            if not text:
+                continue
+            self._speak_text(text)
+
+    def _clear_queue(self):
+        while True:
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                break
+
+    def _terminate_current_speech(self):
+        with self._lock:
+            proc = self._current_proc
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+            self._current_proc = None
+
+    def _detect_backend(self) -> str:
+        if sys.platform.startswith("win"):
+            return "windows_speech"
+        if sys.platform.startswith("linux"):
+            if shutil.which("spd-say"):
+                return "spd_say"
+            if shutil.which("espeak"):
+                return "espeak"
+        return "none"
+
+    def _create_process(self, text: str) -> Optional[subprocess.Popen]:
+        if self._backend == "windows_speech":
+            safe_text = text.replace("'", "''")
+            ps_script = (
+                "Add-Type -AssemblyName System.Speech;"
+                "$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+                "$voice = $speak.GetInstalledVoices() | "
+                "ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Culture.Name -like 'zh*' } | Select-Object -First 1;"
+                "if ($voice) { $speak.SelectVoice($voice.Name) };"
+                "$speak.Rate = 1;"
+                "$speak.Volume = 100;"
+                f"$speak.Speak('{safe_text}');"
+            )
+            return subprocess.Popen(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+
+        if self._backend == "spd_say":
+            # Ubuntu 推荐：speech-dispatcher，支持语言参数
+            return subprocess.Popen(
+                ["spd-say", "-l", "zh_CN", text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+
+        if self._backend == "espeak":
+            # 兜底：espeak，中文语音依赖系统安装对应 voice 数据
+            return subprocess.Popen(
+                ["espeak", "-v", "zh", "-s", "165", text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+
+        return None
+
+    def _speak_text(self, text: str):
+        if self._backend == "none":
+            return
+        try:
+            proc = self._create_process(text)
+            if proc is None:
+                return
+            with self._lock:
+                self._current_proc = proc
+            proc.wait(timeout=25)
+        except Exception as e:
+            logger.debug(f"Voice speak failed: {e}")
+        finally:
+            with self._lock:
+                self._current_proc = None
 
 class ConfigDialog(QDialog):
     def __init__(self, config_path, parent=None):
@@ -83,6 +226,12 @@ class ConfigDialog(QDialog):
         self.combo_view_mode.setCurrentText(current_view_mode)
         layout.addRow("默认界面模式:", self.combo_view_mode)
 
+        self.combo_voice_prompt = QComboBox()
+        self.combo_voice_prompt.addItems(["关闭", "开启"])
+        voice_enabled = self.config_data.get('ui', {}).get('voice_prompt_enabled', False)
+        self.combo_voice_prompt.setCurrentText("开启" if voice_enabled else "关闭")
+        layout.addRow("语音播报提示:", self.combo_voice_prompt)
+
         # Buttons
         btn_layout = QHBoxLayout()
         btn_save = QPushButton("保存并重启")
@@ -130,6 +279,7 @@ class ConfigDialog(QDialog):
 
             ui = self.config_data.setdefault('ui', {})
             ui['default_view_mode'] = self.combo_view_mode.currentText()
+            ui['voice_prompt_enabled'] = (self.combo_voice_prompt.currentText() == "开启")
             
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config_data, f, indent=2, ensure_ascii=False)
@@ -287,6 +437,15 @@ class MainWindow(QMainWindow):
             logger.critical(f"System initialization failed: {e}", exc_info=True)
             QMessageBox.critical(self, "初始化错误", f"无法启动系统: {e}")
             sys.exit(1)
+
+        ui_config = self.system.config.get('ui', {})
+        self.voice_prompt_enabled = bool(ui_config.get('voice_prompt_enabled', False))
+        self.voice_min_interval_sec = 4.0
+        self._last_spoken_hint = ""
+        self._last_spoken_at = 0.0
+        self._last_start_arrival_key = ""
+        self._skip_hint_speech_once = False
+        self._voice_speaker = HintVoiceSpeaker(enabled=self.voice_prompt_enabled)
             
         self.init_ui()
 
@@ -752,6 +911,13 @@ class MainWindow(QMainWindow):
                     self.lbl_start_flag.setText("起点: 等待进入(下一圈)")
                 else:
                     self.lbl_start_flag.setText("起点: 已到达" if at_start else "起点: 未到达")
+
+                if at_start:
+                    start_arrival_key = f"{current_task.get('task_id','')}-{completed}"
+                    if start_arrival_key != self._last_start_arrival_key:
+                        self._voice_speaker.speak("到达起点")
+                        self._last_start_arrival_key = start_arrival_key
+                        self._skip_hint_speech_once = True
                     
                 self.lbl_end_flag.setText("终点: 已到达" if at_end else "终点: 未到达")
             else:
@@ -781,13 +947,17 @@ class MainWindow(QMainWindow):
                     prefix += f" · 下一个必经点 {target_name}"
                 elif source_name == 'loop_zone' and target_name:
                     prefix += f" · 循环区 {target_name}"
-                self._set_operation_hint_text(f"{prefix}\n{operation_hint}")
+                self._set_operation_hint_text(
+                    f"{prefix}\n{operation_hint}",
+                    hint_source=source_name,
+                    speech_text=operation_hint
+                )
             else:
                 state_text = current_task.get('state', '')
                 if state_text in [ConditionState.COMPLETED.value, ConditionState.MANUAL_COMPLETED.value]:
-                    self._set_operation_hint_text("当前工况已完成")
+                    self._set_operation_hint_text("当前工况已完成", hint_source='completed', speech_text="当前工况已完成")
                 else:
-                    self._set_operation_hint_text("当前暂无配置的操作提示")
+                    self._set_operation_hint_text("当前暂无配置的操作提示", hint_source='none', speech_text="")
                 
             if self.view_mode == 'debug':
                 if task_changed or not hasattr(self, '_map_scale_ready'):
@@ -813,8 +983,9 @@ class MainWindow(QMainWindow):
             self.update_queue()
             self._queue_initialized = True
 
-    def _set_operation_hint_text(self, text: str):
+    def _set_operation_hint_text(self, text: str, hint_source: Optional[str] = None, speech_text: Optional[str] = None):
         self.lbl_operation_hint.setText(text)
+        self._maybe_speak_operation_hint(text, hint_source=hint_source, speech_text=speech_text)
         if self.view_mode != 'driver':
             return
 
@@ -832,6 +1003,45 @@ class MainWindow(QMainWindow):
             size = 18
 
         self.lbl_operation_hint.setFont(QFont("Arial", size, QFont.Bold))
+
+    def _maybe_speak_operation_hint(self, text: str, hint_source: Optional[str] = None, speech_text: Optional[str] = None):
+        if not self.voice_prompt_enabled:
+            return
+
+        # 只播报当前关键点操作，不播报“下一个关键点”引导
+        if hint_source == 'upcoming_checkpoint':
+            return
+
+        if self._skip_hint_speech_once:
+            self._skip_hint_speech_once = False
+            return
+
+        raw_text = (speech_text if speech_text is not None else text or "").strip()
+        if hint_source == 'prestart':
+            lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+            if lines and lines[0] == "准备阶段":
+                lines = lines[1:]
+            # 准备阶段只播报提示内容第一行
+            raw_text = lines[0] if lines else raw_text
+
+        normalized = " ".join(raw_text.replace("\n", " ").split()).strip()
+        if not normalized:
+            return
+
+        muted_texts = {"等待工况提示...", "当前暂无配置的操作提示"}
+        if normalized in muted_texts:
+            return
+
+        # 已通过 speech_text 解耦显示与播报，语音只读操作内容本体
+        speak_text = normalized
+
+        now = time.time()
+        if speak_text == self._last_spoken_hint and (now - self._last_spoken_at) < self.voice_min_interval_sec:
+            return
+
+        self._voice_speaker.speak(speak_text)
+        self._last_spoken_hint = speak_text
+        self._last_spoken_at = now
 
     def _compute_map_scale(self, current_task: dict, gps: Optional[GPSData]):
         if not hasattr(self, 'map_view'):
@@ -1327,6 +1537,8 @@ class MainWindow(QMainWindow):
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             logger.info("Application closing by user request")
+            if hasattr(self, '_voice_speaker'):
+                self._voice_speaker.shutdown()
             self.system.cleanup()
             event.accept()
         else:
