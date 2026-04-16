@@ -1,5 +1,6 @@
 # 字节码
 __pycache__/
+.claude/
 *.pyc
 *.pyo
 
