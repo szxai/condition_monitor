@@ -156,14 +156,22 @@ class HintVoiceSpeaker:
         configured = (self.ui_config.get("piper_binary_path") or "").strip()
         if configured:
             candidate = configured if os.path.isabs(configured) else os.path.join(self._project_root, configured)
-            if os.path.exists(candidate):
+            if os.path.exists(candidate) and os.access(candidate, os.X_OK):
                 return candidate
-            logger.warning("Configured piper binary not found: %s", candidate)
+            logger.warning("Configured piper binary invalid (missing or not executable): %s", candidate)
 
         env_bin = (os.environ.get("PIPER_BIN") or "").strip()
         if env_bin:
             candidate = env_bin if os.path.isabs(env_bin) else os.path.join(self._project_root, env_bin)
-            if os.path.exists(candidate):
+            if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+
+        linux_candidates = [
+            os.path.expanduser("~/.local/bin/piper"),
+            "/home/pc1/.local/bin/piper",
+        ]
+        for candidate in linux_candidates:
+            if os.path.exists(candidate) and os.access(candidate, os.X_OK):
                 return candidate
 
         # 依次尝试常见命名，避免命中桌面版 GTK Piper

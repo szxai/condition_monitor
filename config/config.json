@@ -25,7 +25,7 @@
     "interactive_commands": true,
     "default_view_mode": "debug",
     "voice_prompt_enabled": true,
-    "piper_binary_path": "",
+    "piper_binary_path": "/home/pc1/.local/bin/piper",
     "piper_model_path": "models/zh_CN-huayan-medium.onnx",
     "edge_voice": "zh-CN-XiaoxiaoNeural",
     "edge_network_check_url": "https://www.baidu.com",
