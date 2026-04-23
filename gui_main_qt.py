@@ -46,6 +46,8 @@ class HintVoiceSpeaker:
         self._edge_voice = self.ui_config.get("edge_voice", "zh-CN-XiaoxiaoNeural")
         self._edge_check_url = self.ui_config.get("edge_network_check_url", "https://www.bing.com")
         self._edge_check_ttl_sec = float(self.ui_config.get("edge_network_check_ttl_sec", 30.0))
+        # 默认关闭自动切 edge，优先本地 Piper 以降低延迟和漏播风险
+        self._edge_auto_switch = bool(self.ui_config.get("edge_auto_switch", False))
         self._edge_available_cache = False
         self._edge_last_check_at = 0.0
         self._backend = self._detect_backend()
@@ -122,9 +124,9 @@ class HintVoiceSpeaker:
         if sys.platform.startswith("win"):
             return "windows_speech"
         if sys.platform.startswith("linux"):
-            # Linux 优先策略：Piper 为主，网络良好时自动切换 edge-tts
+            # Linux 优先策略：默认本地 Piper；仅显式开启时才自动切换 edge-tts
             if self._piper_bin and self._piper_model_path and self._piper_model_arg and self._piper_raw_arg:
-                if self._is_edge_playback_ready():
+                if self._edge_auto_switch and self._is_edge_playback_ready():
                     return "hybrid_piper_edge"
                 return "piper"
             if self._piper_bin and self._piper_model_path and (not self._piper_model_arg or not self._piper_raw_arg):
@@ -143,13 +145,14 @@ class HintVoiceSpeaker:
         if not sys.platform.startswith("linux"):
             return
         logger.info(
-            "Voice runtime check: backend=%s, piper_bin=%s, model=%s, sample_rate=%s, piper_model_arg=%s, piper_raw_arg=%s, aplay=%s, edge-playback=%s",
+            "Voice runtime check: backend=%s, piper_bin=%s, model=%s, sample_rate=%s, piper_model_arg=%s, piper_raw_arg=%s, edge_auto_switch=%s, aplay=%s, edge-playback=%s",
             self._backend,
             self._piper_bin or "none",
             bool(self._piper_model_path),
             self._piper_sample_rate,
             self._piper_model_arg,
             self._piper_raw_arg,
+            self._edge_auto_switch,
             bool(shutil.which("aplay")),
             self._is_edge_playback_ready(),
         )
@@ -2013,10 +2016,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     window = MainWindow(view_mode=launch.selected_mode)
-    # 部分 Linux 窗管在首次 showMaximized 时不会正确贴边，双阶段强制最大化
+    # 使用窗口最大化（保留任务栏），但不强制固定到左上，避免被左侧任务栏遮挡
     window.show()
-    window.move(0, 0)
     QTimer.singleShot(0, window.showMaximized)
-    QTimer.singleShot(120, window.showMaximized)
-    QTimer.singleShot(220, lambda: window.move(0, 0))
+    QTimer.singleShot(180, window.showMaximized)
     sys.exit(app.exec_())
