@@ -69,6 +69,8 @@ class HintVoiceSpeaker:
         if clean_text == self._last_enqueued:
             return
         self._last_enqueued = clean_text
+        # 新提示优先：中断当前播报，降低语音滞后感
+        self._terminate_current_speech()
         self._clear_queue()
         try:
             self._queue.put_nowait(clean_text)
@@ -894,7 +896,7 @@ class MainWindow(QMainWindow):
 
         ui_config = self.system.config.get('ui', {})
         self.voice_prompt_enabled = bool(ui_config.get('voice_prompt_enabled', False))
-        self.voice_min_interval_sec = 4.0
+        self.voice_min_interval_sec = max(0.8, float(ui_config.get('voice_min_interval_sec', 1.8)))
         self._last_spoken_hint = ""
         self._last_spoken_at = 0.0
         self._last_start_arrival_key = ""
@@ -2011,5 +2013,10 @@ if __name__ == "__main__":
         sys.exit(0)
 
     window = MainWindow(view_mode=launch.selected_mode)
-    window.showMaximized()
+    # 部分 Linux 窗管在首次 showMaximized 时不会正确贴边，双阶段强制最大化
+    window.show()
+    window.move(0, 0)
+    QTimer.singleShot(0, window.showMaximized)
+    QTimer.singleShot(120, window.showMaximized)
+    QTimer.singleShot(220, lambda: window.move(0, 0))
     sys.exit(app.exec_())
