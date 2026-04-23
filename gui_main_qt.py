@@ -7,6 +7,7 @@ import queue
 import subprocess
 import time
 import shutil
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,7 @@ class HintVoiceSpeaker:
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
         self._backend = self._detect_backend()
+        self._linux_voice = self._detect_linux_voice() if self._backend in {"espeak_ng", "espeak"} else "zh"
         self._queue: "queue.Queue[str]" = queue.Queue(maxsize=1)
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
@@ -104,15 +106,133 @@ class HintVoiceSpeaker:
         if sys.platform.startswith("win"):
             return "windows_speech"
         if sys.platform.startswith("linux"):
-            if shutil.which("spd-say"):
-                return "spd_say"
+            # Ubuntu 20.04 上优先直接调用 espeak 系列，避免 speech-dispatcher 回退到逐字母拼读
+            if shutil.which("espeak-ng"):
+                return "espeak_ng"
             if shutil.which("espeak"):
                 return "espeak"
+            if shutil.which("spd-say"):
+                return "spd_say"
         return "none"
 
+    def _detect_linux_voice(self) -> str:
+        if self._backend not in {"espeak_ng", "espeak"}:
+            return "zh"
+        binary = "espeak-ng" if self._backend == "espeak_ng" else "espeak"
+        default_voice = "zh"
+        try:
+            result = subprocess.run(
+                [binary, "--voices"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                timeout=1.0
+            )
+            output = result.stdout or ""
+            preferred = ("zh", "cmn", "zhy")
+            for line in output.splitlines():
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                lang = parts[1].strip().lower()
+                if lang in preferred:
+                    return lang
+        except Exception:
+            pass
+        return default_voice
+
+    def _prepare_chinese_speech_text(self, text: str) -> str:
+        clean = " ".join((text or "").split()).strip()
+        if not clean:
+            return ""
+        # 将阿拉伯数字统一转为中文读法，避免 Ubuntu 下英文数字播报
+        clean = re.sub(r"-?\d+(?:\.\d+)?", lambda m: self._number_to_chinese(m.group(0)), clean)
+        clean = re.sub(r"(?i)\bkm/h\b", "公里每小时", clean)
+        clean = re.sub(r"(?i)\bm/s\b", "米每秒", clean)
+        clean = clean.replace("%", "百分之")
+        # 用更自然的中文停顿替换英文符号
+        clean = clean.replace(":", "，").replace("/", "每").replace("-", " ")
+        clean = re.sub(r"\s+", " ", clean).strip()
+        return clean
+
+    def _number_to_chinese(self, token: str) -> str:
+        digits = "零一二三四五六七八九"
+        token = (token or "").strip()
+        if not token:
+            return token
+
+        negative = token.startswith("-")
+        core = token[1:] if negative else token
+        if "." in core:
+            int_part, frac_part = core.split(".", 1)
+            int_cn = self._int_to_chinese(int(int_part) if int_part else 0)
+            frac_cn = "".join(digits[int(ch)] for ch in frac_part if ch.isdigit())
+            out = f"{int_cn}点{frac_cn}" if frac_cn else int_cn
+            return f"负{out}" if negative else out
+
+        out = self._int_to_chinese(int(core))
+        return f"负{out}" if negative else out
+
+    def _int_to_chinese(self, value: int) -> str:
+        digits = "零一二三四五六七八九"
+        units = ("", "十", "百", "千")
+        big_units = ("", "万", "亿", "兆")
+        if value == 0:
+            return "零"
+
+        def section_to_chinese(section: int) -> str:
+            if section == 0:
+                return ""
+            out = []
+            zero_pending = False
+            unit_index = 0
+            while section > 0:
+                num = section % 10
+                if num == 0:
+                    if out and not zero_pending:
+                        zero_pending = True
+                else:
+                    if zero_pending:
+                        out.append("零")
+                        zero_pending = False
+                    out.append(units[unit_index])
+                    out.append(digits[num])
+                unit_index += 1
+                section //= 10
+            return "".join(reversed(out))
+
+        parts = []
+        need_zero = False
+        unit_pos = 0
+        while value > 0:
+            section = value % 10000
+            if section == 0:
+                need_zero = True
+            else:
+                section_cn = section_to_chinese(section) + big_units[unit_pos]
+                if need_zero:
+                    parts.append("零")
+                    need_zero = False
+                parts.append(section_cn)
+                if section < 1000:
+                    need_zero = True
+            value //= 10000
+            unit_pos += 1
+
+        result = "".join(reversed(parts))
+        result = re.sub("零+", "零", result).rstrip("零")
+        if result.startswith("一十"):
+            result = result[1:]
+        return result or "零"
+
     def _create_process(self, text: str) -> Optional[subprocess.Popen]:
+        speak_text = self._prepare_chinese_speech_text(text)
+        if not speak_text:
+            return None
+
         if self._backend == "windows_speech":
-            safe_text = text.replace("'", "''")
+            safe_text = speak_text.replace("'", "''")
             ps_script = (
                 "Add-Type -AssemblyName System.Speech;"
                 "$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
@@ -132,18 +252,26 @@ class HintVoiceSpeaker:
             )
 
         if self._backend == "spd_say":
-            # Ubuntu 推荐：speech-dispatcher，支持语言参数
+            # 兜底：某些环境只有 speech-dispatcher
             return subprocess.Popen(
-                ["spd-say", "-l", "zh_CN", text],
+                ["spd-say", "-l", "zh_CN", speak_text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+
+        if self._backend == "espeak_ng":
+            return subprocess.Popen(
+                ["espeak-ng", "-v", self._linux_voice, "-s", "170", "-p", "55", speak_text],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 text=True
             )
 
         if self._backend == "espeak":
-            # 兜底：espeak，中文语音依赖系统安装对应 voice 数据
+            # Ubuntu 20.04 兼容分支
             return subprocess.Popen(
-                ["espeak", "-v", "zh", "-s", "165", text],
+                ["espeak", "-v", self._linux_voice, "-s", "165", "-p", "55", speak_text],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 text=True
@@ -161,6 +289,8 @@ class HintVoiceSpeaker:
             with self._lock:
                 self._current_proc = proc
             proc.wait(timeout=25)
+        except subprocess.TimeoutExpired:
+            self._terminate_current_speech()
         except Exception as e:
             logger.debug(f"Voice speak failed: {e}")
         finally:

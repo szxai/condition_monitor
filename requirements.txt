@@ -6,5 +6,5 @@ pandas>=1.5.0         # CSV/template editing utilities
 # Linux / Ubuntu system packages (not pip packages):
 # 1) PyQt5 runtime libraries
 #    sudo apt-get install -y libxcb-xinerama0
-# 2) Voice prompt backends (for gui_main_qt.py TTS)
-#    sudo apt-get install -y speech-dispatcher espeak-ng
+# 2) Voice prompt backends (Ubuntu 20.04, Chinese TTS)
+#    sudo apt-get install -y espeak-ng espeak-ng-data speech-dispatcher
