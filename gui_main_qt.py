@@ -54,6 +54,7 @@ class HintVoiceSpeaker:
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
         logger.info(f"Voice backend selected: {self._backend}")
+        self._log_runtime_diagnostics()
 
     def speak(self, text: str):
         if not self.enabled:
@@ -130,17 +131,29 @@ class HintVoiceSpeaker:
                 return "spd_say"
         return "none"
 
+    def _log_runtime_diagnostics(self):
+        if not sys.platform.startswith("linux"):
+            return
+        logger.info(
+            "Voice runtime check: backend=%s, piper=%s, model=%s, aplay=%s, edge-playback=%s",
+            self._backend,
+            bool(shutil.which("piper")),
+            bool(self._piper_model_path),
+            bool(shutil.which("aplay")),
+            bool(shutil.which("edge-playback")),
+        )
+
     def _resolve_piper_model_path(self) -> str:
         configured = (self.ui_config.get("piper_model_path") or "").strip()
         if configured:
             candidate = configured if os.path.isabs(configured) else os.path.join(self._project_root, configured)
-            if os.path.exists(candidate):
+            if self._is_valid_piper_model(candidate):
                 return candidate
 
         env_model = (os.environ.get("PIPER_MODEL_PATH") or "").strip()
         if env_model:
             candidate = env_model if os.path.isabs(env_model) else os.path.join(self._project_root, env_model)
-            if os.path.exists(candidate):
+            if self._is_valid_piper_model(candidate):
                 return candidate
 
         candidates = [
@@ -155,9 +168,18 @@ class HintVoiceSpeaker:
         ]
         for rel in candidates:
             abs_path = os.path.join(self._project_root, rel)
-            if os.path.exists(abs_path):
+            if self._is_valid_piper_model(abs_path):
                 return abs_path
         return ""
+
+    def _is_valid_piper_model(self, model_path: str) -> bool:
+        if not model_path or not os.path.exists(model_path):
+            return False
+        sidecar = model_path + ".json"
+        if os.path.exists(sidecar):
+            return True
+        logger.warning("Piper model sidecar missing: %s (expect %s)", model_path, sidecar)
+        return False
 
     def _is_edge_available(self) -> bool:
         now = time.time()
@@ -425,6 +447,9 @@ class HintVoiceSpeaker:
         if self._backend == "none":
             return
         try:
+            speak_text = self._prepare_chinese_speech_text(text)
+            if not speak_text:
+                return
             proc = self._create_process(text)
             if proc is None:
                 logger.warning("No available TTS process. Check Piper model/player or fallback tools.")
@@ -432,6 +457,11 @@ class HintVoiceSpeaker:
             # Piper 需要将原始 PCM 送入 aplay
             if self._backend in {"piper", "hybrid_piper_edge"} and proc.args and isinstance(proc.args, list) and proc.args[0] == "piper":
                 if proc.stdout is None:
+                    fallback_proc = self._create_linux_fallback_process(speak_text)
+                    if fallback_proc is not None:
+                        with self._lock:
+                            self._current_proc = fallback_proc
+                        fallback_proc.wait(timeout=25)
                     return
                 aplay_proc = subprocess.Popen(
                     ["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw"],
@@ -443,11 +473,16 @@ class HintVoiceSpeaker:
                 with self._lock:
                     self._current_proc = aplay_proc
                 if proc.stdin:
-                    feed_text = self._prepare_chinese_speech_text(text)
-                    proc.stdin.write((feed_text + "\n").encode("utf-8"))
+                    proc.stdin.write((speak_text + "\n").encode("utf-8"))
                     proc.stdin.close()
-                aplay_proc.wait(timeout=25)
-                proc.wait(timeout=5)
+                aplay_rc = aplay_proc.wait(timeout=25)
+                piper_rc = proc.wait(timeout=5)
+                if aplay_rc != 0 or piper_rc != 0:
+                    fallback_proc = self._create_linux_fallback_process(speak_text)
+                    if fallback_proc is not None:
+                        with self._lock:
+                            self._current_proc = fallback_proc
+                        fallback_proc.wait(timeout=25)
                 return
             with self._lock:
                 self._current_proc = proc
@@ -1850,8 +1885,5 @@ if __name__ == "__main__":
         sys.exit(0)
 
     window = MainWindow(view_mode=launch.selected_mode)
-    if sys.platform.startswith("linux"):
-        window.showFullScreen()
-    else:
-        window.showMaximized()
+    window.showMaximized()
     sys.exit(app.exec_())
