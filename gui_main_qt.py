@@ -122,7 +122,7 @@ class HintVoiceSpeaker:
         if sys.platform.startswith("linux"):
             # Linux 优先策略：Piper 为主，网络良好时自动切换 edge-tts
             if self._piper_bin and self._piper_model_path and self._piper_model_arg and self._piper_raw_arg:
-                if shutil.which("edge-playback"):
+                if self._is_edge_playback_ready():
                     return "hybrid_piper_edge"
                 return "piper"
             if self._piper_bin and self._piper_model_path and (not self._piper_model_arg or not self._piper_raw_arg):
@@ -149,8 +149,12 @@ class HintVoiceSpeaker:
             self._piper_model_arg,
             self._piper_raw_arg,
             bool(shutil.which("aplay")),
-            bool(shutil.which("edge-playback")),
+            self._is_edge_playback_ready(),
         )
+
+    def _is_edge_playback_ready(self) -> bool:
+        # edge-playback 依赖 mpv；仅 edge-playback 存在并不足以保证可播报
+        return bool(shutil.which("edge-playback")) and bool(shutil.which("mpv"))
 
     def _resolve_piper_binary(self) -> str:
         configured = (self.ui_config.get("piper_binary_path") or "").strip()
@@ -279,7 +283,7 @@ class HintVoiceSpeaker:
             return self._edge_available_cache
 
         self._edge_last_check_at = now
-        if not shutil.which("edge-playback"):
+        if not self._is_edge_playback_ready():
             self._edge_available_cache = False
             return False
 
@@ -583,7 +587,32 @@ class HintVoiceSpeaker:
                 return
             with self._lock:
                 self._current_proc = proc
-            proc.wait(timeout=25)
+            exit_code = proc.wait(timeout=25)
+            if exit_code != 0 and self._backend == "hybrid_piper_edge":
+                logger.warning("edge-playback failed with exit_code=%s. Falling back.", exit_code)
+                fallback_proc = self._create_piper_process(speak_text) or self._create_linux_fallback_process(speak_text)
+                if fallback_proc is not None:
+                    # 兼容 piper 和普通回退命令两种分支
+                    if fallback_proc.args and isinstance(fallback_proc.args, list) and os.path.basename(str(fallback_proc.args[0])) in {"piper", "piper-tts", "piper_tts"}:
+                        if fallback_proc.stdout is not None:
+                            aplay_proc = subprocess.Popen(
+                                ["aplay", "-q", "-r", str(self._piper_sample_rate), "-f", "S16_LE", "-t", "raw"],
+                                stdin=fallback_proc.stdout,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                text=False
+                            )
+                            with self._lock:
+                                self._current_proc = aplay_proc
+                            if fallback_proc.stdin:
+                                fallback_proc.stdin.write((speak_text + "\n").encode("utf-8"))
+                                fallback_proc.stdin.close()
+                            aplay_proc.wait(timeout=25)
+                            fallback_proc.wait(timeout=5)
+                    else:
+                        with self._lock:
+                            self._current_proc = fallback_proc
+                        fallback_proc.wait(timeout=25)
         except subprocess.TimeoutExpired:
             self._terminate_current_speech()
         except Exception as e:
