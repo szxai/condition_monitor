@@ -119,7 +119,7 @@ class HintVoiceSpeaker:
         if self._backend not in {"espeak_ng", "espeak"}:
             return "zh"
         binary = "espeak-ng" if self._backend == "espeak_ng" else "espeak"
-        default_voice = "zh"
+        default_voice = "cmn"
         try:
             result = subprocess.run(
                 [binary, "--voices"],
@@ -130,16 +130,26 @@ class HintVoiceSpeaker:
                 timeout=1.0
             )
             output = result.stdout or ""
-            preferred = ("zh", "cmn", "zhy")
+            # 优先普通话声线，其次通用中文声线
+            preferred = ("cmn", "zh", "zhy")
+            voice_hits = []
             for line in output.splitlines():
                 parts = line.split()
                 if len(parts) < 2:
                     continue
                 lang = parts[1].strip().lower()
-                if lang in preferred:
-                    return lang
+                voice_name = parts[3].strip().lower() if len(parts) >= 4 else ""
+                voice_hits.append((lang, voice_name))
+
+            for cand in preferred:
+                for lang, voice_name in voice_hits:
+                    if lang == cand or voice_name == cand:
+                        return cand
         except Exception:
             pass
+        # cmn 不可用时回退 zh，确保兼容 Ubuntu 20.04 默认包
+        if default_voice == "cmn":
+            return "zh"
         return default_voice
 
     def _prepare_chinese_speech_text(self, text: str) -> str:
@@ -153,7 +163,13 @@ class HintVoiceSpeaker:
         clean = clean.replace("%", "百分之")
         # 用更自然的中文停顿替换英文符号
         clean = clean.replace(":", "，").replace("/", "每").replace("-", " ")
+        clean = clean.replace(",", "，").replace(";", "，")
+        clean = clean.replace("!", "。").replace("?", "。")
+        clean = clean.replace("（", "，").replace("）", "，")
         clean = re.sub(r"\s+", " ", clean).strip()
+        clean = re.sub(r"[，。]{2,}", "。", clean)
+        if clean and clean[-1] not in "。！？":
+            clean += "。"
         return clean
 
     def _number_to_chinese(self, token: str) -> str:
@@ -262,7 +278,8 @@ class HintVoiceSpeaker:
 
         if self._backend == "espeak_ng":
             return subprocess.Popen(
-                ["espeak-ng", "-v", self._linux_voice, "-s", "170", "-p", "55", speak_text],
+                # 稍慢语速 + 词间停顿，提升中文听感流畅度
+                ["espeak-ng", "-v", self._linux_voice, "-s", "152", "-p", "46", "-g", "6", speak_text],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 text=True
@@ -271,7 +288,7 @@ class HintVoiceSpeaker:
         if self._backend == "espeak":
             # Ubuntu 20.04 兼容分支
             return subprocess.Popen(
-                ["espeak", "-v", self._linux_voice, "-s", "165", "-p", "55", speak_text],
+                ["espeak", "-v", self._linux_voice, "-s", "148", "-p", "46", "-g", "6", speak_text],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 text=True
