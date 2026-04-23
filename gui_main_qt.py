@@ -37,6 +37,7 @@ class HintVoiceSpeaker:
     def __init__(self, enabled: bool = True, ui_config: Optional[dict] = None):
         self.enabled = enabled
         self.ui_config = ui_config or {}
+        self._project_root = os.path.dirname(os.path.abspath(__file__))
         self._piper_model_path = self._resolve_piper_model_path()
         self._edge_voice = self.ui_config.get("edge_voice", "zh-CN-XiaoxiaoNeural")
         self._edge_check_url = self.ui_config.get("edge_network_check_url", "https://www.bing.com")
@@ -131,21 +132,29 @@ class HintVoiceSpeaker:
 
     def _resolve_piper_model_path(self) -> str:
         configured = (self.ui_config.get("piper_model_path") or "").strip()
-        if configured and os.path.exists(configured):
-            return configured
+        if configured:
+            candidate = configured if os.path.isabs(configured) else os.path.join(self._project_root, configured)
+            if os.path.exists(candidate):
+                return candidate
 
         env_model = (os.environ.get("PIPER_MODEL_PATH") or "").strip()
-        if env_model and os.path.exists(env_model):
-            return env_model
+        if env_model:
+            candidate = env_model if os.path.isabs(env_model) else os.path.join(self._project_root, env_model)
+            if os.path.exists(candidate):
+                return candidate
 
         candidates = [
+            "models/zh_CN-huayan-medium.onnx",
+            "models/zh_CN-huayan-low.onnx",
+            "models/zh_CN-huayan-high.onnx",
+            "models/zh_CN-sinica-medium.onnx",
             "models/tts/zh_CN-huayan-medium.onnx",
             "models/tts/zh_CN-huayan-low.onnx",
             "models/tts/zh_CN-huayan-high.onnx",
             "models/tts/zh_CN-sinica-medium.onnx",
         ]
         for rel in candidates:
-            abs_path = os.path.abspath(rel)
+            abs_path = os.path.join(self._project_root, rel)
             if os.path.exists(abs_path):
                 return abs_path
         return ""
@@ -340,10 +349,16 @@ class HintVoiceSpeaker:
                     )
                 except Exception:
                     pass
-            return self._create_piper_process(speak_text)
+            piper_proc = self._create_piper_process(speak_text)
+            if piper_proc is not None:
+                return piper_proc
+            return self._create_linux_fallback_process(speak_text)
 
         if self._backend == "piper":
-            return self._create_piper_process(speak_text)
+            piper_proc = self._create_piper_process(speak_text)
+            if piper_proc is not None:
+                return piper_proc
+            return self._create_linux_fallback_process(speak_text)
 
         if self._backend == "espeak_ng":
             return subprocess.Popen(
@@ -363,6 +378,31 @@ class HintVoiceSpeaker:
                 text=True
             )
 
+        return None
+
+    def _create_linux_fallback_process(self, speak_text: str) -> Optional[subprocess.Popen]:
+        # 当 Piper 不可播放（模型/播放器缺失）时，保证至少有声音输出
+        if shutil.which("espeak-ng"):
+            return subprocess.Popen(
+                ["espeak-ng", "-v", "zh", "-s", "152", "-p", "46", "-g", "6", speak_text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+        if shutil.which("espeak"):
+            return subprocess.Popen(
+                ["espeak", "-v", "zh", "-s", "148", "-p", "46", "-g", "6", speak_text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+        if shutil.which("spd-say"):
+            return subprocess.Popen(
+                ["spd-say", "-l", "zh_CN", speak_text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
         return None
 
     def _create_piper_process(self, speak_text: str) -> Optional[subprocess.Popen]:
@@ -387,9 +427,12 @@ class HintVoiceSpeaker:
         try:
             proc = self._create_process(text)
             if proc is None:
+                logger.warning("No available TTS process. Check Piper model/player or fallback tools.")
                 return
             # Piper 需要将原始 PCM 送入 aplay
             if self._backend in {"piper", "hybrid_piper_edge"} and proc.args and isinstance(proc.args, list) and proc.args[0] == "piper":
+                if proc.stdout is None:
+                    return
                 aplay_proc = subprocess.Popen(
                     ["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw"],
                     stdin=proc.stdout,
@@ -1807,5 +1850,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     window = MainWindow(view_mode=launch.selected_mode)
-    window.showMaximized()
+    if sys.platform.startswith("linux"):
+        window.showFullScreen()
+    else:
+        window.showMaximized()
     sys.exit(app.exec_())
