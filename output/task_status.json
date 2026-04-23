@@ -1,55 +1,58 @@
 {
-  "timestamp": "2026-04-14T12:50:00.826715Z",
+  "timestamp": "2026-04-21T06:01:37.694244Z",
   "event_type": "program_end",
   "current_task": {
     "condition": "AG",
     "description": "ABS砂石路",
     "task_id": "TASK-001",
-    "state": "未开始",
-    "start_time": null,
+    "state": "进行中",
+    "start_time": "2026-04-21T13:57:48.633399",
     "end_time": null,
     "duration_seconds": null,
     "ref_time_min": 200.0,
     "ref_time_max": 600.0,
     "completion_score": null,
-    "avg_speed_kmh": null,
-    "max_speed_kmh": null,
-    "min_speed_kmh": null,
-    "distance_m": 0.0,
+    "avg_speed_kmh": 21.788201823088393,
+    "max_speed_kmh": 2222.342890507513,
+    "min_speed_kmh": 0.0,
+    "distance_m": 1253.400547001325,
     "checkpoints": [
       {
         "name": "Waypoint01",
         "required": true,
         "hint_text": "",
         "lap_hints": {
-          "1": "轻加速30，坡顶轻加速40，在“开始制动”标志之后，全制动25，中/全加速40，全制动25，中/全加速40，全制动0，返回3#环岛",
-          "2": "轻加速30，坡顶轻加速40，在“开始制动”标志之后，全制动0。中/全加速40，全制动25，全制动0。切换至倒挡，中25/全20。全制动0。返回3#环岛"
+          "1": "轻加速30，坡顶轻加速40",
+          "2": "轻加速30，坡顶轻加速40"
         },
-        "passed": false,
-        "passed_at": null
+        "passed": true,
+        "passed_at": "2026-04-21T14:01:06.673451"
       },
       {
         "name": "Waypoint02",
         "required": true,
         "hint_text": "",
         "lap_hints": {
-          "1": "掉头通过连接路，返回3#环岛，开始第二圈吧",
-          "2": "已完成，请返回3#环岛"
+          "1": "在“开始制动”标志之后，全25，中/全40，全25，中/全40，全0，返回3号环岛",
+          "2": "在“开始制动”标志之后，全制动0。中/全40，全25，全0。切换至倒挡，中25/全20。0。返回3号环岛"
         },
-        "passed": false,
-        "passed_at": null
+        "passed": true,
+        "passed_at": "2026-04-21T14:01:28.149117"
       },
       {
         "name": "Waypoint03",
         "required": true,
         "hint_text": "",
-        "lap_hints": {},
+        "lap_hints": {
+          "1": "掉头通过连接路，返回3号环岛，开始第二圈吧",
+          "2": "已完成，请返回3号环岛"
+        },
         "passed": false,
         "passed_at": null
       }
     ],
     "loop_zones": null,
-    "laps_completed": 0,
+    "laps_completed": 1,
     "required_laps": 2,
     "skip_reason": null,
     "failure_reason": null
@@ -59,51 +62,54 @@
       "condition": "AG",
       "description": "ABS砂石路",
       "task_id": "TASK-001",
-      "state": "未开始",
-      "start_time": null,
+      "state": "进行中",
+      "start_time": "2026-04-21T13:57:48.633399",
       "end_time": null,
       "duration_seconds": null,
       "ref_time_min": 200.0,
       "ref_time_max": 600.0,
       "completion_score": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
+      "avg_speed_kmh": 21.788201823088393,
+      "max_speed_kmh": 2222.342890507513,
+      "min_speed_kmh": 0.0,
+      "distance_m": 1253.400547001325,
       "checkpoints": [
         {
           "name": "Waypoint01",
           "required": true,
           "hint_text": "",
           "lap_hints": {
-            "1": "轻加速30，坡顶轻加速40，在“开始制动”标志之后，全制动25，中/全加速40，全制动25，中/全加速40，全制动0，返回3#环岛",
-            "2": "轻加速30，坡顶轻加速40，在“开始制动”标志之后，全制动0。中/全加速40，全制动25，全制动0。切换至倒挡，中25/全20。全制动0。返回3#环岛"
+            "1": "轻加速30，坡顶轻加速40",
+            "2": "轻加速30，坡顶轻加速40"
           },
-          "passed": false,
-          "passed_at": null
+          "passed": true,
+          "passed_at": "2026-04-21T14:01:06.673451"
         },
         {
           "name": "Waypoint02",
           "required": true,
           "hint_text": "",
           "lap_hints": {
-            "1": "掉头通过连接路，返回3#环岛，开始第二圈吧",
-            "2": "已完成，请返回3#环岛"
+            "1": "在“开始制动”标志之后，全25，中/全40，全25，中/全40，全0，返回3号环岛",
+            "2": "在“开始制动”标志之后，全制动0。中/全40，全25，全0。切换至倒挡，中25/全20。0。返回3号环岛"
           },
-          "passed": false,
-          "passed_at": null
+          "passed": true,
+          "passed_at": "2026-04-21T14:01:28.149117"
         },
         {
           "name": "Waypoint03",
           "required": true,
           "hint_text": "",
-          "lap_hints": {},
+          "lap_hints": {
+            "1": "掉头通过连接路，返回3号环岛，开始第二圈吧",
+            "2": "已完成，请返回3号环岛"
+          },
           "passed": false,
           "passed_at": null
         }
       ],
       "loop_zones": null,
-      "laps_completed": 0,
+      "laps_completed": 1,
       "required_laps": 2,
       "skip_reason": null,
       "failure_reason": null
@@ -259,7 +265,7 @@
   "summary": {
     "total_tasks": 8,
     "completed_tasks": 0,
-    "pending_tasks": 8,
+    "pending_tasks": 7,
     "failed_tasks": 0,
     "skipped_tasks": 0
   }
