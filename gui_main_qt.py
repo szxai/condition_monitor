@@ -38,7 +38,11 @@ class HintVoiceSpeaker:
         self.enabled = enabled
         self.ui_config = ui_config or {}
         self._project_root = os.path.dirname(os.path.abspath(__file__))
+        self._piper_bin = self._resolve_piper_binary()
         self._piper_model_path = self._resolve_piper_model_path()
+        self._piper_sample_rate = self._resolve_piper_sample_rate()
+        self._piper_model_arg = self._detect_piper_model_arg()
+        self._piper_raw_arg = self._detect_piper_raw_arg()
         self._edge_voice = self.ui_config.get("edge_voice", "zh-CN-XiaoxiaoNeural")
         self._edge_check_url = self.ui_config.get("edge_network_check_url", "https://www.bing.com")
         self._edge_check_ttl_sec = float(self.ui_config.get("edge_network_check_ttl_sec", 30.0))
@@ -117,10 +121,12 @@ class HintVoiceSpeaker:
             return "windows_speech"
         if sys.platform.startswith("linux"):
             # Linux 优先策略：Piper 为主，网络良好时自动切换 edge-tts
-            if shutil.which("piper") and self._piper_model_path:
+            if self._piper_bin and self._piper_model_path and self._piper_model_arg and self._piper_raw_arg:
                 if shutil.which("edge-playback"):
                     return "hybrid_piper_edge"
                 return "piper"
+            if self._piper_bin and self._piper_model_path and (not self._piper_model_arg or not self._piper_raw_arg):
+                logger.warning("Detected non-TTS 'piper' binary. Skip Piper backend and use fallback TTS.")
 
             # 兜底：espeak 系列，避免 speech-dispatcher 回退到逐字母拼读
             if shutil.which("espeak-ng"):
@@ -135,13 +141,37 @@ class HintVoiceSpeaker:
         if not sys.platform.startswith("linux"):
             return
         logger.info(
-            "Voice runtime check: backend=%s, piper=%s, model=%s, aplay=%s, edge-playback=%s",
+            "Voice runtime check: backend=%s, piper_bin=%s, model=%s, sample_rate=%s, piper_model_arg=%s, piper_raw_arg=%s, aplay=%s, edge-playback=%s",
             self._backend,
-            bool(shutil.which("piper")),
+            self._piper_bin or "none",
             bool(self._piper_model_path),
+            self._piper_sample_rate,
+            self._piper_model_arg,
+            self._piper_raw_arg,
             bool(shutil.which("aplay")),
             bool(shutil.which("edge-playback")),
         )
+
+    def _resolve_piper_binary(self) -> str:
+        configured = (self.ui_config.get("piper_binary_path") or "").strip()
+        if configured:
+            candidate = configured if os.path.isabs(configured) else os.path.join(self._project_root, configured)
+            if os.path.exists(candidate):
+                return candidate
+            logger.warning("Configured piper binary not found: %s", candidate)
+
+        env_bin = (os.environ.get("PIPER_BIN") or "").strip()
+        if env_bin:
+            candidate = env_bin if os.path.isabs(env_bin) else os.path.join(self._project_root, env_bin)
+            if os.path.exists(candidate):
+                return candidate
+
+        # 依次尝试常见命名，避免命中桌面版 GTK Piper
+        for name in ("piper-tts", "piper_tts", "piper"):
+            found = shutil.which(name)
+            if found:
+                return found
+        return ""
 
     def _resolve_piper_model_path(self) -> str:
         configured = (self.ui_config.get("piper_model_path") or "").strip()
@@ -180,6 +210,60 @@ class HintVoiceSpeaker:
             return True
         logger.warning("Piper model sidecar missing: %s (expect %s)", model_path, sidecar)
         return False
+
+    def _resolve_piper_sample_rate(self) -> int:
+        default_rate = 22050
+        if not self._piper_model_path:
+            return default_rate
+        sidecar = self._piper_model_path + ".json"
+        if not os.path.exists(sidecar):
+            return default_rate
+        try:
+            with open(sidecar, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            audio_cfg = meta.get("audio", {}) if isinstance(meta, dict) else {}
+            rate = int(audio_cfg.get("sample_rate", default_rate))
+            if rate > 0:
+                return rate
+        except Exception as e:
+            logger.warning("Failed to parse Piper sidecar sample_rate: %s", e)
+        return default_rate
+
+    def _detect_piper_model_arg(self) -> str:
+        help_text = self._read_piper_help()
+        if not help_text:
+            return ""
+        if "--model" in help_text:
+            return "--model"
+        if "-m" in help_text:
+            return "-m"
+        return ""
+
+    def _detect_piper_raw_arg(self) -> str:
+        help_text = self._read_piper_help()
+        if not help_text:
+            return ""
+        if "--output-raw" in help_text:
+            return "--output-raw"
+        if "--output_raw" in help_text:
+            return "--output_raw"
+        return ""
+
+    def _read_piper_help(self) -> str:
+        if not self._piper_bin:
+            return ""
+        try:
+            result = subprocess.run(
+                [self._piper_bin, "--help"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                timeout=1.2
+            )
+            return (result.stdout or "").lower()
+        except Exception:
+            return ""
 
     def _is_edge_available(self) -> bool:
         now = time.time()
@@ -428,15 +512,19 @@ class HintVoiceSpeaker:
         return None
 
     def _create_piper_process(self, speak_text: str) -> Optional[subprocess.Popen]:
-        if not shutil.which("piper") or not self._piper_model_path:
+        if not self._piper_bin or not self._piper_model_path:
+            return None
+        if not self._piper_model_arg or not self._piper_raw_arg:
+            logger.warning("Piper CLI is incompatible. help missing model/raw flags.")
             return None
         if not shutil.which("aplay"):
             logger.warning("Piper playback requires 'aplay' (alsa-utils).")
             return None
 
         model_path = self._piper_model_path
+        cmd = [self._piper_bin, self._piper_model_arg, model_path, self._piper_raw_arg]
         return subprocess.Popen(
-            ["piper", "--model", model_path, "--output-raw"],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -455,7 +543,7 @@ class HintVoiceSpeaker:
                 logger.warning("No available TTS process. Check Piper model/player or fallback tools.")
                 return
             # Piper 需要将原始 PCM 送入 aplay
-            if self._backend in {"piper", "hybrid_piper_edge"} and proc.args and isinstance(proc.args, list) and proc.args[0] == "piper":
+            if self._backend in {"piper", "hybrid_piper_edge"} and proc.args and isinstance(proc.args, list) and os.path.basename(str(proc.args[0])) in {"piper", "piper-tts", "piper_tts"}:
                 if proc.stdout is None:
                     fallback_proc = self._create_linux_fallback_process(speak_text)
                     if fallback_proc is not None:
@@ -464,7 +552,7 @@ class HintVoiceSpeaker:
                         fallback_proc.wait(timeout=25)
                     return
                 aplay_proc = subprocess.Popen(
-                    ["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw"],
+                    ["aplay", "-q", "-r", str(self._piper_sample_rate), "-f", "S16_LE", "-t", "raw"],
                     stdin=proc.stdout,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -478,6 +566,7 @@ class HintVoiceSpeaker:
                 aplay_rc = aplay_proc.wait(timeout=25)
                 piper_rc = proc.wait(timeout=5)
                 if aplay_rc != 0 or piper_rc != 0:
+                    logger.warning("Piper playback failed: piper_rc=%s, aplay_rc=%s. Falling back.", piper_rc, aplay_rc)
                     fallback_proc = self._create_linux_fallback_process(speak_text)
                     if fallback_proc is not None:
                         with self._lock:
