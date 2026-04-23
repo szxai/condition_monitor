@@ -8,6 +8,7 @@ import subprocess
 import time
 import shutil
 import re
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -33,8 +34,15 @@ logger = setup_logger("ConditionMonitor")
 
 class HintVoiceSpeaker:
     """后台语音播报器（Windows + Linux）"""
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = True, ui_config: Optional[dict] = None):
         self.enabled = enabled
+        self.ui_config = ui_config or {}
+        self._piper_model_path = self._resolve_piper_model_path()
+        self._edge_voice = self.ui_config.get("edge_voice", "zh-CN-XiaoxiaoNeural")
+        self._edge_check_url = self.ui_config.get("edge_network_check_url", "https://www.bing.com")
+        self._edge_check_ttl_sec = float(self.ui_config.get("edge_network_check_ttl_sec", 30.0))
+        self._edge_available_cache = False
+        self._edge_last_check_at = 0.0
         self._backend = self._detect_backend()
         self._linux_voice = self._detect_linux_voice() if self._backend in {"espeak_ng", "espeak"} else "zh"
         self._queue: "queue.Queue[str]" = queue.Queue(maxsize=1)
@@ -106,7 +114,13 @@ class HintVoiceSpeaker:
         if sys.platform.startswith("win"):
             return "windows_speech"
         if sys.platform.startswith("linux"):
-            # Ubuntu 20.04 上优先直接调用 espeak 系列，避免 speech-dispatcher 回退到逐字母拼读
+            # Linux 优先策略：Piper 为主，网络良好时自动切换 edge-tts
+            if shutil.which("piper") and self._piper_model_path:
+                if shutil.which("edge-playback"):
+                    return "hybrid_piper_edge"
+                return "piper"
+
+            # 兜底：espeak 系列，避免 speech-dispatcher 回退到逐字母拼读
             if shutil.which("espeak-ng"):
                 return "espeak_ng"
             if shutil.which("espeak"):
@@ -114,6 +128,44 @@ class HintVoiceSpeaker:
             if shutil.which("spd-say"):
                 return "spd_say"
         return "none"
+
+    def _resolve_piper_model_path(self) -> str:
+        configured = (self.ui_config.get("piper_model_path") or "").strip()
+        if configured and os.path.exists(configured):
+            return configured
+
+        env_model = (os.environ.get("PIPER_MODEL_PATH") or "").strip()
+        if env_model and os.path.exists(env_model):
+            return env_model
+
+        candidates = [
+            "models/tts/zh_CN-huayan-medium.onnx",
+            "models/tts/zh_CN-huayan-low.onnx",
+            "models/tts/zh_CN-huayan-high.onnx",
+            "models/tts/zh_CN-sinica-medium.onnx",
+        ]
+        for rel in candidates:
+            abs_path = os.path.abspath(rel)
+            if os.path.exists(abs_path):
+                return abs_path
+        return ""
+
+    def _is_edge_available(self) -> bool:
+        now = time.time()
+        if (now - self._edge_last_check_at) < self._edge_check_ttl_sec:
+            return self._edge_available_cache
+
+        self._edge_last_check_at = now
+        if not shutil.which("edge-playback"):
+            self._edge_available_cache = False
+            return False
+
+        try:
+            urllib.request.urlopen(self._edge_check_url, timeout=1.2)
+            self._edge_available_cache = True
+        except Exception:
+            self._edge_available_cache = False
+        return self._edge_available_cache
 
     def _detect_linux_voice(self) -> str:
         if self._backend not in {"espeak_ng", "espeak"}:
@@ -276,6 +328,23 @@ class HintVoiceSpeaker:
                 text=True
             )
 
+        if self._backend == "hybrid_piper_edge":
+            # 网络良好时切到 edge-tts，失败自动回退 Piper
+            if self._is_edge_available():
+                try:
+                    return subprocess.Popen(
+                        ["edge-playback", "--voice", self._edge_voice, "--text", speak_text],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        text=True
+                    )
+                except Exception:
+                    pass
+            return self._create_piper_process(speak_text)
+
+        if self._backend == "piper":
+            return self._create_piper_process(speak_text)
+
         if self._backend == "espeak_ng":
             return subprocess.Popen(
                 # 稍慢语速 + 词间停顿，提升中文听感流畅度
@@ -296,12 +365,46 @@ class HintVoiceSpeaker:
 
         return None
 
+    def _create_piper_process(self, speak_text: str) -> Optional[subprocess.Popen]:
+        if not shutil.which("piper") or not self._piper_model_path:
+            return None
+        if not shutil.which("aplay"):
+            logger.warning("Piper playback requires 'aplay' (alsa-utils).")
+            return None
+
+        model_path = self._piper_model_path
+        return subprocess.Popen(
+            ["piper", "--model", model_path, "--output-raw"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=False
+        )
+
     def _speak_text(self, text: str):
         if self._backend == "none":
             return
         try:
             proc = self._create_process(text)
             if proc is None:
+                return
+            # Piper 需要将原始 PCM 送入 aplay
+            if self._backend in {"piper", "hybrid_piper_edge"} and proc.args and isinstance(proc.args, list) and proc.args[0] == "piper":
+                aplay_proc = subprocess.Popen(
+                    ["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw"],
+                    stdin=proc.stdout,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=False
+                )
+                with self._lock:
+                    self._current_proc = aplay_proc
+                if proc.stdin:
+                    feed_text = self._prepare_chinese_speech_text(text)
+                    proc.stdin.write((feed_text + "\n").encode("utf-8"))
+                    proc.stdin.close()
+                aplay_proc.wait(timeout=25)
+                proc.wait(timeout=5)
                 return
             with self._lock:
                 self._current_proc = proc
@@ -592,7 +695,7 @@ class MainWindow(QMainWindow):
         self._last_spoken_at = 0.0
         self._last_start_arrival_key = ""
         self._skip_hint_speech_once = False
-        self._voice_speaker = HintVoiceSpeaker(enabled=self.voice_prompt_enabled)
+        self._voice_speaker = HintVoiceSpeaker(enabled=self.voice_prompt_enabled, ui_config=ui_config)
             
         self.init_ui()
 

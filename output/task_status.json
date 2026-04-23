@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-21T06:01:37.694244Z",
+  "timestamp": "2026-04-23T02:13:08.367569Z",
   "event_type": "program_end",
   "current_task": {
     "condition": "AG",
@@ -12,10 +12,10 @@
     "ref_time_min": 200.0,
     "ref_time_max": 600.0,
     "completion_score": null,
-    "avg_speed_kmh": 21.788201823088393,
-    "max_speed_kmh": 2222.342890507513,
+    "avg_speed_kmh": 9.201534464241076,
+    "max_speed_kmh": 526.006970714036,
     "min_speed_kmh": 0.0,
-    "distance_m": 1253.400547001325,
+    "distance_m": 45.13907846048477,
     "checkpoints": [
       {
         "name": "Waypoint01",
@@ -69,10 +69,10 @@
       "ref_time_min": 200.0,
       "ref_time_max": 600.0,
       "completion_score": null,
-      "avg_speed_kmh": 21.788201823088393,
-      "max_speed_kmh": 2222.342890507513,
+      "avg_speed_kmh": 9.201534464241076,
+      "max_speed_kmh": 526.006970714036,
       "min_speed_kmh": 0.0,
-      "distance_m": 1253.400547001325,
+      "distance_m": 45.13907846048477,
       "checkpoints": [
         {
           "name": "Waypoint01",

@@ -2,9 +2,10 @@
 pyserial>=3.5         # USB GPS serial communication
 PyQt5>=5.15.0         # GUI framework (main UI + editors)
 pandas>=1.5.0         # CSV/template editing utilities
+edge-tts>=6.1.0       # Optional: neural TTS via edge-playback when network is good
 
 # Linux / Ubuntu system packages (not pip packages):
 # 1) PyQt5 runtime libraries
 #    sudo apt-get install -y libxcb-xinerama0
 # 2) Voice prompt backends (Ubuntu 20.04, Chinese TTS)
-#    sudo apt-get install -y espeak-ng espeak-ng-data speech-dispatcher
+#    sudo apt-get install -y piper espeak-ng espeak-ng-data speech-dispatcher alsa-utils

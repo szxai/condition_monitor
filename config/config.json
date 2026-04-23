@@ -24,6 +24,10 @@
   "ui": {
     "interactive_commands": true,
     "default_view_mode": "debug",
-    "voice_prompt_enabled": true
+    "voice_prompt_enabled": true,
+    "piper_model_path": "models/zh_CN-huayan-medium.onnx",
+    "edge_voice": "zh-CN-XiaoxiaoNeural",
+    "edge_network_check_url": "https://www.baidu.com",
+    "edge_network_check_ttl_sec": 30.0
   }
 }
