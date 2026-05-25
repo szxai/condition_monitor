@@ -1,123 +1,164 @@
 {
-  "timestamp": "2026-04-23T02:13:08.367569Z",
+  "timestamp": "2026-04-28T06:41:24.647989Z",
   "event_type": "program_end",
   "current_task": {
-    "condition": "AG",
-    "description": "ABS砂石路",
+    "condition": "AA",
+    "description": "连接环道A",
     "task_id": "TASK-001",
-    "state": "进行中",
-    "start_time": "2026-04-21T13:57:48.633399",
+    "state": "未开始",
+    "start_time": null,
     "end_time": null,
     "duration_seconds": null,
-    "ref_time_min": 200.0,
-    "ref_time_max": 600.0,
+    "ref_time_min": 350.0,
+    "ref_time_max": 1200.0,
     "completion_score": null,
-    "avg_speed_kmh": 9.201534464241076,
-    "max_speed_kmh": 526.006970714036,
-    "min_speed_kmh": 0.0,
-    "distance_m": 45.13907846048477,
+    "avg_speed_kmh": null,
+    "max_speed_kmh": null,
+    "min_speed_kmh": null,
+    "distance_m": 0.0,
     "checkpoints": [
       {
         "name": "Waypoint01",
         "required": true,
-        "hint_text": "",
-        "lap_hints": {
-          "1": "轻加速30，坡顶轻加速40",
-          "2": "轻加速30，坡顶轻加速40"
-        },
-        "passed": true,
-        "passed_at": "2026-04-21T14:01:06.673451"
+        "hint_text": "加速至60，到达芳甸桥后开启定速巡航，再进入三号环道",
+        "lap_hints": {},
+        "passed": false,
+        "passed_at": null
       },
       {
         "name": "Waypoint02",
         "required": true,
-        "hint_text": "",
-        "lap_hints": {
-          "1": "在“开始制动”标志之后，全25，中/全40，全25，中/全40，全0，返回3号环岛",
-          "2": "在“开始制动”标志之后，全制动0。中/全40，全25，全0。切换至倒挡，中25/全20。0。返回3号环岛"
-        },
-        "passed": true,
-        "passed_at": "2026-04-21T14:01:28.149117"
+        "hint_text": "请行驶至2号环道",
+        "lap_hints": {},
+        "passed": false,
+        "passed_at": null
       },
       {
         "name": "Waypoint03",
         "required": true,
-        "hint_text": "",
-        "lap_hints": {
-          "1": "掉头通过连接路，返回3号环岛，开始第二圈吧",
-          "2": "已完成，请返回3号环岛"
-        },
+        "hint_text": "返回一号环岛",
+        "lap_hints": {},
         "passed": false,
         "passed_at": null
       }
     ],
     "loop_zones": null,
-    "laps_completed": 1,
-    "required_laps": 2,
+    "laps_completed": 0,
+    "required_laps": 1,
     "skip_reason": null,
     "failure_reason": null
   },
   "all_tasks_status": [
     {
-      "condition": "AG",
-      "description": "ABS砂石路",
+      "condition": "AA",
+      "description": "连接环道A",
       "task_id": "TASK-001",
-      "state": "进行中",
-      "start_time": "2026-04-21T13:57:48.633399",
+      "state": "未开始",
+      "start_time": null,
       "end_time": null,
       "duration_seconds": null,
-      "ref_time_min": 200.0,
-      "ref_time_max": 600.0,
+      "ref_time_min": 350.0,
+      "ref_time_max": 1200.0,
       "completion_score": null,
-      "avg_speed_kmh": 9.201534464241076,
-      "max_speed_kmh": 526.006970714036,
-      "min_speed_kmh": 0.0,
-      "distance_m": 45.13907846048477,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
+      "checkpoints": [
+        {
+          "name": "Waypoint01",
+          "required": true,
+          "hint_text": "加速至60，到达芳甸桥后开启定速巡航，再进入三号环道",
+          "lap_hints": {},
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint02",
+          "required": true,
+          "hint_text": "请行驶至2号环道",
+          "lap_hints": {},
+          "passed": false,
+          "passed_at": null
+        },
+        {
+          "name": "Waypoint03",
+          "required": true,
+          "hint_text": "返回一号环岛",
+          "lap_hints": {},
+          "passed": false,
+          "passed_at": null
+        }
+      ],
+      "loop_zones": null,
+      "laps_completed": 0,
+      "required_laps": 1,
+      "skip_reason": null,
+      "failure_reason": null
+    },
+    {
+      "condition": "AS",
+      "description": "ABS湿滑路",
+      "task_id": "TASK-002",
+      "state": "manual_completed",
+      "state_display": "人工完成",
+      "start_time": null,
+      "end_time": "2026-04-28T14:32:00.540710",
+      "duration_seconds": null,
+      "avg_speed_kmh": null,
+      "max_speed_kmh": null,
+      "min_speed_kmh": null,
+      "distance_m": 0.0,
       "checkpoints": [
         {
           "name": "Waypoint01",
           "required": true,
           "hint_text": "",
           "lap_hints": {
-            "1": "轻加速30，坡顶轻加速40",
-            "2": "轻加速30，坡顶轻加速40"
+            "1": "经过点1，第一圈",
+            "2": "经过点1，第二圈",
+            "3": "经过点1，第三圈"
           },
-          "passed": true,
-          "passed_at": "2026-04-21T14:01:06.673451"
+          "passed": false,
+          "passed_at": null
         },
         {
           "name": "Waypoint02",
           "required": true,
           "hint_text": "",
           "lap_hints": {
-            "1": "在“开始制动”标志之后，全25，中/全40，全25，中/全40，全0，返回3号环岛",
-            "2": "在“开始制动”标志之后，全制动0。中/全40，全25，全0。切换至倒挡，中25/全20。0。返回3号环岛"
+            "1": "经过点2，第一圈",
+            "2": "经过点2，第二圈",
+            "3": "经过点2，第三圈"
           },
-          "passed": true,
-          "passed_at": "2026-04-21T14:01:28.149117"
+          "passed": false,
+          "passed_at": null
         },
         {
           "name": "Waypoint03",
           "required": true,
           "hint_text": "",
           "lap_hints": {
-            "1": "掉头通过连接路，返回3号环岛，开始第二圈吧",
-            "2": "已完成，请返回3号环岛"
+            "1": "经过点3，第一圈",
+            "2": "经过点3，第二圈",
+            "3": "经过点3，第三圈"
           },
           "passed": false,
           "passed_at": null
         }
       ],
       "loop_zones": null,
-      "laps_completed": 1,
-      "required_laps": 2,
+      "laps_completed": 0,
+      "required_laps": 3,
+      "completion_score": null,
       "skip_reason": null,
-      "failure_reason": null
+      "failure_reason": null,
+      "completion_reason": null
     },
     {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-002",
+      "condition": "AS",
+      "description": "ABS湿滑路",
+      "task_id": "TASK-003",
       "state": "未开始",
       "state_display": "未开始",
       "start_time": null,
@@ -130,34 +171,13 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 2,
+      "required_laps": 3,
       "completion_score": null,
       "skip_reason": null,
       "failure_reason": null
     },
     {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-003",
-      "state": "未开始",
-      "state_display": "等待重试",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 2,
-      "completion_score": null,
-      "skip_reason": "用户手动跳过",
-      "failure_reason": null
-    },
-    {
-      "condition": "AG",
+      "condition": "AS",
       "description": "ABS砂石路",
       "task_id": "TASK-004",
       "state": "未开始",
@@ -172,100 +192,16 @@
       "checkpoints": [],
       "loop_zones": null,
       "laps_completed": 0,
-      "required_laps": 2,
-      "completion_score": null,
-      "skip_reason": null,
-      "failure_reason": null
-    },
-    {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-005",
-      "state": "未开始",
-      "state_display": "未开始",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 2,
-      "completion_score": null,
-      "skip_reason": null,
-      "failure_reason": null
-    },
-    {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-006",
-      "state": "未开始",
-      "state_display": "未开始",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 2,
-      "completion_score": null,
-      "skip_reason": null,
-      "failure_reason": null
-    },
-    {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-007",
-      "state": "未开始",
-      "state_display": "未开始",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 2,
-      "completion_score": null,
-      "skip_reason": null,
-      "failure_reason": null
-    },
-    {
-      "condition": "AG",
-      "description": "ABS砂石路",
-      "task_id": "TASK-008",
-      "state": "未开始",
-      "state_display": "未开始",
-      "start_time": null,
-      "end_time": null,
-      "duration_seconds": null,
-      "avg_speed_kmh": null,
-      "max_speed_kmh": null,
-      "min_speed_kmh": null,
-      "distance_m": 0.0,
-      "checkpoints": [],
-      "loop_zones": null,
-      "laps_completed": 0,
-      "required_laps": 2,
+      "required_laps": 3,
       "completion_score": null,
       "skip_reason": null,
       "failure_reason": null
     }
   ],
   "summary": {
-    "total_tasks": 8,
+    "total_tasks": 4,
     "completed_tasks": 0,
-    "pending_tasks": 7,
+    "pending_tasks": 3,
     "failed_tasks": 0,
     "skipped_tasks": 0
   }

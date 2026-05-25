@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pandas as pd
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QPoint
 from PyQt5.QtGui import QColor, QFont, QPainterPath, QPen, QBrush
 from PyQt5.QtWidgets import (
     QApplication,
@@ -87,12 +87,27 @@ class MapView(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._transformer = None
+        self._panning = False
+        self._pan_start_pos = QPoint()
+        self._min_view_scale = 0.2
+        self._max_view_scale = 50.0
 
     def set_transformer(self, transformer):
         self._transformer = transformer
 
     def mouseMoveEvent(self, event):
+        if self._panning:
+            delta = event.pos() - self._pan_start_pos
+            self._pan_start_pos = event.pos()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            event.accept()
+            return
         super().mouseMoveEvent(event)
         if not self._transformer:
             return
@@ -101,12 +116,43 @@ class MapView(QGraphicsView):
         self.mouse_moved.emit(lon, lat)
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            self._panning = True
+            self._pan_start_pos = event.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
         super().mousePressEvent(event)
         if not self._transformer:
             return
-        scene_pos = self.mapToScene(event.pos())
-        lon, lat = self._transformer.scene_to_geo(scene_pos.x(), scene_pos.y())
-        self.mouse_clicked.emit(lon, lat)
+        if event.button() == Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            lon, lat = self._transformer.scene_to_geo(scene_pos.x(), scene_pos.y())
+            self.mouse_clicked.emit(lon, lat)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.RightButton and self._panning:
+            self._panning = False
+            self.unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        delta_y = event.angleDelta().y()
+        if delta_y == 0:
+            event.ignore()
+            return
+        steps = abs(delta_y) / 120.0
+        factor = (1.25 if delta_y > 0 else 0.8) ** steps
+        current_scale = self.transform().m11()
+        target_scale = current_scale * factor
+        if target_scale < self._min_view_scale:
+            factor = self._min_view_scale / current_scale
+        elif target_scale > self._max_view_scale:
+            factor = self._max_view_scale / current_scale
+        self.scale(factor, factor)
+        event.accept()
 
 
 class GeoTransformer:
