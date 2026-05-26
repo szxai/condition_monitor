@@ -17,9 +17,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QListWidget,
                              QListWidgetItem, QFrame, 
                              QMessageBox, QDialog, QFormLayout, QComboBox, QLineEdit, 
-                             QScrollArea, QSplitter, QGroupBox, QAction, QFileDialog, QStyleFactory, QHeaderView, QGraphicsView, QGraphicsScene)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPointF, QRectF
-from PyQt5.QtGui import QFont, QColor, QIcon, QPen, QBrush, QPolygonF
+                             QScrollArea, QSizePolicy, QSplitter, QGroupBox, QAction, QFileDialog, QStyleFactory, QHeaderView, QGraphicsView, QGraphicsScene)
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPointF, QRect, QRectF
+from PyQt5.QtGui import QFont, QFontMetrics, QColor, QIcon, QPen, QBrush, QPolygonF
 
 # Import existing system
 from main import ConditionMonitorSystem
@@ -860,7 +860,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         logger.info("Initializing MainWindow")
         self.setWindowTitle("工况监控系统 (Condition Monitor) - PyQt Edition")
-        self.resize(1200, 800)
+        self._apply_default_window_size()
+        self._driver_resize_timer = QTimer(self)
+        self._driver_resize_timer.setSingleShot(True)
+        self._driver_resize_timer.timeout.connect(self._apply_driver_responsive_layout)
         
         # Initialize System
         self.config_path = 'config/config.json'
@@ -904,9 +907,159 @@ class MainWindow(QMainWindow):
         self._last_spoken_at = 0.0
         self._last_start_arrival_key = ""
         self._skip_hint_speech_once = False
+        self._suppress_prestart_speech = False
         self._voice_speaker = HintVoiceSpeaker(enabled=self.voice_prompt_enabled, ui_config=ui_config)
             
         self.init_ui()
+
+    def _make_vertical_shrinkable(self, widget: QWidget):
+        if widget is None:
+            return
+        widget.setMinimumSize(0, 0)
+        policy = widget.sizePolicy()
+        policy.setVerticalPolicy(QSizePolicy.Ignored)
+        widget.setSizePolicy(policy)
+
+    def _apply_default_window_size(self):
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else QRect(0, 0, 1200, 800)
+        target_width = max(960, int(available.width() * 0.92))
+        target_height = max(640, int(available.height() * 0.92))
+        self.resize(target_width, target_height)
+
+    def _apply_initial_splitter_sizes(self):
+        available_width = self.centralWidget().width() if self.centralWidget() else self.width()
+        if available_width <= 0:
+            return
+
+        ratio = 0.72 if available_width < 1300 else 0.66
+        min_right_width = 380 if available_width < 1300 else 420
+        right_width = max(min_right_width, int(available_width * (1.0 - ratio)))
+        left_width = max(0, available_width - right_width)
+
+        splitter = getattr(self, "main_splitter", None)
+        if splitter is not None:
+            splitter.setSizes([left_width, right_width])
+
+        splitter = getattr(self, "body_splitter", None)
+        if splitter is not None:
+            splitter.setSizes([left_width, right_width])
+
+    def _compute_driver_scale(self) -> float:
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else QRect(0, 0, self.width(), self.height())
+        screen_reference_height = 900
+        available_height = max(1, int(available.height()))
+        screen_scale = available_height / float(screen_reference_height)
+        screen_scale = min(1.0, max(0.62, screen_scale))
+
+        window_ratio = self.height() / float(available_height)
+        window_ratio = min(1.0, max(0.5, window_ratio))
+
+        scale = screen_scale * window_ratio
+        return min(1.0, max(0.5, scale))
+
+    def _apply_driver_responsive_layout(self):
+        if getattr(self, "view_mode", None) != "driver":
+            return
+        if not hasattr(self, "_driver_font_items"):
+            return
+        scale = self._compute_driver_scale()
+        for widget, base_size, weight in self._driver_font_items:
+            if widget is None:
+                continue
+            size = max(9, int(round(base_size * scale)))
+            widget.setFont(QFont("Arial", size, weight))
+
+        if hasattr(self, "lbl_current_task") and self.lbl_current_task is not None:
+            self.lbl_current_task.setMinimumHeight(self.lbl_current_task.fontMetrics().height() + 4)
+        if hasattr(self, "lbl_current_task_id") and self.lbl_current_task_id is not None:
+            self.lbl_current_task_id.setMinimumHeight(self.lbl_current_task_id.fontMetrics().height() + 4)
+        if hasattr(self, "lbl_next_task") and self.lbl_next_task is not None:
+            self.lbl_next_task.setMinimumHeight(self.lbl_next_task.fontMetrics().height() + 4)
+
+        if hasattr(self, "_driver_buttons"):
+            for btn, base_min_h in self._driver_buttons:
+                if btn is None:
+                    continue
+                btn.setMinimumHeight(max(32, int(round(base_min_h * scale))))
+
+        if hasattr(self, "_driver_left_layout") and self._driver_left_layout is not None:
+            self._driver_left_layout.setSpacing(max(8, int(round(16 * scale))))
+
+        if hasattr(self, "_driver_current_layout") and self._driver_current_layout is not None:
+            self._driver_current_layout.setSpacing(max(8, int(round(16 * scale))))
+
+        if hasattr(self, "_driver_operation_hint") and self._driver_operation_hint is not None:
+            border = max(1, int(round(3 * scale)))
+            radius = max(6, int(round(14 * scale)))
+            padding = max(10, int(round(26 * scale)))
+            self._driver_operation_hint_padding = padding
+            self._driver_operation_hint.setStyleSheet(
+                f"color: #402000; background-color: #fff4d6; "
+                f"border: {border}px solid #e7ba52; border-radius: {radius}px; padding: {padding}px;"
+            )
+
+        if hasattr(self, "_driver_status_cards") and self._driver_status_cards:
+            radius = max(4, int(round(8 * scale)))
+            padding = max(6, int(round(12 * scale)))
+            for lbl in self._driver_status_cards:
+                if lbl is None:
+                    continue
+                lbl.setStyleSheet(f"background:#eef4ff; border-radius:{radius}px; padding:{padding}px;")
+
+        if hasattr(self, "_driver_loops_label") and self._driver_loops_label is not None:
+            radius = max(4, int(round(8 * scale)))
+            padding = max(8, int(round(14 * scale)))
+            self._driver_loops_label.setStyleSheet(
+                f"background:#f7f9fb; border:1px solid #d8e1ea; border-radius:{radius}px; padding:{padding}px;"
+            )
+
+        if hasattr(self, "lbl_operation_hint") and self.lbl_operation_hint is not None:
+            self._fit_operation_hint_font(self.lbl_operation_hint.text())
+
+    def _fit_operation_hint_font(self, text: str, start_size: Optional[int] = None):
+        if getattr(self, "view_mode", None) != "driver":
+            return
+        label = getattr(self, "lbl_operation_hint", None)
+        if label is None:
+            return
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return
+
+        rect = label.contentsRect()
+        width = rect.width()
+        height = rect.height()
+        if width <= 0 or height <= 0:
+            return
+
+        padding = int(getattr(self, "_driver_operation_hint_padding", 0))
+        available_height = max(10, height - padding * 2)
+        available_width = max(10, width)
+
+        base_font = label.font()
+        weight = base_font.weight()
+        size = int(start_size) if start_size is not None else int(base_font.pointSize())
+        size = max(9, size)
+        min_size = 12
+        if max(available_width, available_height) < 420:
+            min_size = 10
+
+        while size > min_size:
+            fm = QFontMetrics(QFont("Arial", size, weight))
+            need = fm.boundingRect(QRect(0, 0, available_width, 20000), Qt.TextWordWrap, clean_text)
+            if need.height() <= available_height:
+                break
+            size -= 1
+
+        label.setFont(QFont("Arial", size, weight))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "view_mode", None) == "driver":
+            if hasattr(self, "_driver_resize_timer") and self._driver_resize_timer is not None:
+                self._driver_resize_timer.start(80)
 
     def init_ui(self):
         # Central Widget
@@ -914,19 +1067,23 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         if self.view_mode == 'driver':
             self._init_driver_ui(central_widget)
+            QTimer.singleShot(0, self._apply_initial_splitter_sizes)
+            QTimer.singleShot(260, self._apply_initial_splitter_sizes)
+            QTimer.singleShot(0, self._apply_driver_responsive_layout)
+            QTimer.singleShot(260, self._apply_driver_responsive_layout)
             self.update_queue()
             self._queue_initialized = True
             return
         main_layout = QHBoxLayout(central_widget)
         
         # Splitter for Left (Execution) and Right (Queue)
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self.main_splitter)
         
         # --- Left Panel: Execution Status ---
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        splitter.addWidget(left_panel)
+        self.main_splitter.addWidget(left_panel)
         
         # 1. Header (GPS & Status)
         header_group = QGroupBox("系统状态")
@@ -1042,7 +1199,7 @@ class MainWindow(QMainWindow):
         # --- Right Panel: Task Queue ---
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        splitter.addWidget(right_panel)
+        self.main_splitter.addWidget(right_panel)
         
         queue_group = QGroupBox("任务队列 (点击查看详情)")
         queue_layout = QVBoxLayout()
@@ -1073,9 +1230,10 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(cp_group)
         
         # Set Splitter Sizes (60% Left, 40% Right) and Stretch Factors
-        splitter.setSizes([800, 400])
-        splitter.setStretchFactor(0, 2) # Left panel takes more space
-        splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(0, 2) # Left panel takes more space
+        self.main_splitter.setStretchFactor(1, 1)
+        QTimer.singleShot(0, self._apply_initial_splitter_sizes)
+        QTimer.singleShot(260, self._apply_initial_splitter_sizes)
         
         # --- Menu Bar / Toolbar ---
         toolbar = self.addToolBar("Main")
@@ -1116,36 +1274,48 @@ class MainWindow(QMainWindow):
         header_group.setLayout(header_layout)
         main_layout.addWidget(header_group)
 
-        body_splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(body_splitter, 1)
+        self.body_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self.body_splitter, 1)
 
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setSpacing(16)
-        body_splitter.addWidget(left_panel)
+        self.body_splitter.addWidget(left_panel)
 
         current_group = QGroupBox("当前执行工况")
         current_layout = QVBoxLayout()
         current_layout.setSpacing(16)
 
+        self.lbl_current_task_id = QLabel("任务ID: --")
+        self.lbl_current_task_id.setFont(QFont("Arial", 14))
+        self.lbl_current_task_id.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_current_task_id.setStyleSheet("color: #7b8794;")
+
+        self.lbl_next_task = QLabel("下一工况: --")
+        self.lbl_next_task.setFont(QFont("Arial", 14))
+        self.lbl_next_task.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_next_task.setStyleSheet("color: #8a97a6;")
+
         self.lbl_current_task = QLabel("等待开始...")
-        self.lbl_current_task.setFont(QFont("Arial", 34, QFont.Bold))
-        self.lbl_current_task.setAlignment(Qt.AlignCenter)
+        self.lbl_current_task.setFont(QFont("Arial", 40, QFont.Bold))
+        self.lbl_current_task.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.lbl_current_task.setWordWrap(True)
         self.lbl_current_task.setStyleSheet("color: #0b4f9c;")
-        current_layout.addWidget(self.lbl_current_task)
+        self._make_vertical_shrinkable(self.lbl_current_task)
 
         self.lbl_current_desc = QLabel("")
-        self.lbl_current_desc.setFont(QFont("Arial", 28, QFont.Bold))
-        self.lbl_current_desc.setAlignment(Qt.AlignCenter)
-        self.lbl_current_desc.setWordWrap(True)
-        self.lbl_current_desc.setStyleSheet("color: #173d6b; padding: 10px 20px;")
-        current_layout.addWidget(self.lbl_current_desc)
+        self.lbl_current_desc.setVisible(False)
 
-        self.lbl_next_task = QLabel("下个任务: --")
-        self.lbl_next_task.setFont(QFont("Arial", 18))
-        self.lbl_next_task.setAlignment(Qt.AlignCenter)
-        self.lbl_next_task.setStyleSheet("color: #5d6d7e;")
-        current_layout.addWidget(self.lbl_next_task)
+        title_row = QHBoxLayout()
+        title_left = QVBoxLayout()
+        title_right = QVBoxLayout()
+        title_right.setAlignment(Qt.AlignTop | Qt.AlignRight)
+        title_row.addLayout(title_left, 1)
+        title_row.addLayout(title_right)
+        title_left.addWidget(self.lbl_current_task)
+        title_right.addWidget(self.lbl_current_task_id)
+        title_right.addWidget(self.lbl_next_task)
+        current_layout.addLayout(title_row)
 
         status_group = QGroupBox("执行状态")
         status_layout = QHBoxLayout()
@@ -1177,18 +1347,21 @@ class MainWindow(QMainWindow):
         self.lbl_loops.setFont(QFont("Arial", 18))
         self.lbl_loops.setWordWrap(True)
         self.lbl_loops.setStyleSheet("background:#f7f9fb; border:1px solid #d8e1ea; border-radius:8px; padding:14px;")
+        self._make_vertical_shrinkable(self.lbl_loops)
         current_layout.addWidget(self.lbl_loops)
 
         self.lbl_operation_hint_title = QLabel("驾驶指导")
         self.lbl_operation_hint_title.setFont(QFont("Arial", 22, QFont.Bold))
         self.lbl_operation_hint_title.setAlignment(Qt.AlignCenter)
+        self._make_vertical_shrinkable(self.lbl_operation_hint_title)
         current_layout.addWidget(self.lbl_operation_hint_title)
 
         self.lbl_operation_hint = QLabel("等待工况提示...")
         self.lbl_operation_hint.setWordWrap(True)
         self.lbl_operation_hint.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.lbl_operation_hint.setFont(QFont("Arial", 30, QFont.Bold))
-        self.lbl_operation_hint.setMinimumHeight(360)
+        self.lbl_operation_hint.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._make_vertical_shrinkable(self.lbl_operation_hint)
         self.lbl_operation_hint.setStyleSheet(
             "color: #402000; background-color: #fff4d6; "
             "border: 3px solid #e7ba52; border-radius: 14px; padding: 26px;"
@@ -1213,25 +1386,29 @@ class MainWindow(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setSpacing(12)
-        body_splitter.addWidget(right_panel)
+        self.body_splitter.addWidget(right_panel)
 
         queue_group = QGroupBox("工况队列")
         queue_layout = QVBoxLayout()
         self.list_queue = QListWidget()
-        self.list_queue.setSpacing(14)
+        self.list_queue.setSpacing(6)
         self.list_queue.setSelectionMode(QListWidget.NoSelection)
         self.list_queue.setFocusPolicy(Qt.NoFocus)
+        self.list_queue.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list_queue.setStyleSheet(
-            "QListWidget { background: #f6f8fb; border: none; padding: 8px; }"
-            "QListWidget::item { border: none; margin: 4px; }"
+            "QListWidget { background: #f6f8fb; border: none; padding: 4px; }"
+            "QListWidget::item { border: none; margin: 2px; }"
         )
         queue_layout.addWidget(self.list_queue)
         queue_group.setLayout(queue_layout)
         right_layout.addWidget(queue_group, 1)
 
-        body_splitter.setSizes([1350, 450])
-        body_splitter.setStretchFactor(0, 5)
-        body_splitter.setStretchFactor(1, 2)
+        self.body_splitter.setStretchFactor(0, 2)
+        self.body_splitter.setStretchFactor(1, 1)
+        QTimer.singleShot(0, self._apply_initial_splitter_sizes)
+        QTimer.singleShot(260, self._apply_initial_splitter_sizes)
+        QTimer.singleShot(0, self._apply_driver_responsive_layout)
+        QTimer.singleShot(260, self._apply_driver_responsive_layout)
 
         toolbar = self.addToolBar("Main")
         action_config = QAction("⚙ 参数设置", self)
@@ -1244,6 +1421,29 @@ class MainWindow(QMainWindow):
         action_export = QAction("📤 发送工况文件", self)
         action_export.triggered.connect(self.export_status)
         toolbar.addAction(action_export)
+
+        self._driver_left_layout = left_layout
+        self._driver_current_layout = current_layout
+        self._driver_operation_hint = self.lbl_operation_hint
+        self._driver_loops_label = self.lbl_loops
+        self._driver_status_cards = [self.lbl_laps, self.lbl_score, self.lbl_start_flag, self.lbl_end_flag]
+        self._driver_buttons = [(btn_skip, 52), (btn_complete, 52)]
+        self._driver_font_items = [
+            (self.lbl_gps, 11, QFont.Bold),
+            (self.lbl_speed_alt, 11, QFont.Normal),
+            (self.lbl_message, 10, QFont.Normal),
+            (self.lbl_current_task, 40, QFont.Bold),
+            (self.lbl_current_task_id, 12, QFont.Normal),
+            (self.lbl_next_task, 12, QFont.Normal),
+            (self.lbl_laps, 18, QFont.Bold),
+            (self.lbl_score, 18, QFont.Bold),
+            (self.lbl_start_flag, 18, QFont.Bold),
+            (self.lbl_end_flag, 18, QFont.Bold),
+            (self.lbl_loops, 18, QFont.Normal),
+            (self.lbl_operation_hint_title, 22, QFont.Bold),
+            (self.lbl_operation_hint, 30, QFont.Bold),
+        ]
+        self._apply_driver_responsive_layout()
 
     def update_loop(self):
         if not self.system.running:
@@ -1329,7 +1529,9 @@ class MainWindow(QMainWindow):
         if next_task_id:
             next_task_name = self._resolve_task_display_name(next_task_id)
         
-        self.lbl_next_task.setText(f"下个任务: {next_task_name}")
+        if hasattr(self, "lbl_next_task"):
+            prefix = "下一工况" if self.view_mode == "driver" else "下个任务"
+            self.lbl_next_task.setText(f"{prefix}: {next_task_name}")
         
         # Determine if we need to refresh queue/checkpoints
         # Refresh if task changed or explicitly requested via state_changed
@@ -1341,8 +1543,17 @@ class MainWindow(QMainWindow):
         self._last_task_id = current_task_id
         
         if current_task:
-            self.lbl_current_task.setText(current_task.get('condition', 'Unknown'))
-            self.lbl_current_desc.setText(current_task.get('description', ''))
+            if self.view_mode == "driver":
+                condition_code = current_task.get('condition', 'Unknown')
+                condition_name = (current_task.get('description', '') or '').strip() or condition_code
+                self.lbl_current_task.setText(condition_name)
+                if hasattr(self, "lbl_current_desc"):
+                    self.lbl_current_desc.setText("")
+            else:
+                self.lbl_current_task.setText(current_task.get('condition', 'Unknown'))
+                self.lbl_current_desc.setText(current_task.get('description', ''))
+            if hasattr(self, "lbl_current_task_id"):
+                self.lbl_current_task_id.setText(f"任务ID: {current_task.get('task_id', '--')}")
             
             completed = current_task.get('laps_completed', 0)
             required = current_task.get('required_laps', 1)
@@ -1363,6 +1574,7 @@ class MainWindow(QMainWindow):
                 state_code = current_task.get('state', 'pending')
                 laps_completed = current_task.get('laps_completed', 0)
                 is_waiting_lap = (state_code in ['not_started', 'pending'] and laps_completed > 0)
+                self._suppress_prestart_speech = bool(is_waiting_lap)
                 
                 if state_code in ['in_progress', 'completing', 'completed', 'manual_completed']:
                     self.lbl_start_flag.setText("起点: 已通过")
@@ -1382,6 +1594,7 @@ class MainWindow(QMainWindow):
             else:
                 self.lbl_start_flag.setText("起点: --")
                 self.lbl_end_flag.setText("终点: --")
+                self._suppress_prestart_speech = False
             
             # Loops
             loops_text = []
@@ -1424,14 +1637,22 @@ class MainWindow(QMainWindow):
                 self._update_map(gps, current_task)
                 self.update_checkpoints(current_task.get('checkpoints', []))
         else:
-            self.lbl_current_task.setText("无任务正在执行")
-            self.lbl_current_desc.setText("")
+            if self.view_mode == "driver":
+                self.lbl_current_task.setText("无任务正在执行")
+                if hasattr(self, "lbl_current_desc"):
+                    self.lbl_current_desc.setText("")
+            else:
+                self.lbl_current_task.setText("无任务正在执行")
+                self.lbl_current_desc.setText("")
+            if hasattr(self, "lbl_current_task_id"):
+                self.lbl_current_task_id.setText("任务ID: --")
             self.lbl_laps.setText("圈数: -- / --")
             self.lbl_score.setText("评分: --")
             self.lbl_start_flag.setText("起点: --")
             self.lbl_end_flag.setText("终点: --")
             self.lbl_loops.setText("循环区: --")
             self._set_operation_hint_text("等待工况提示...")
+            self._suppress_prestart_speech = False
             if hasattr(self, 'map_scene'):
                 self.map_scene.clear()
             if hasattr(self, 'tree_checkpoints'):
@@ -1461,7 +1682,7 @@ class MainWindow(QMainWindow):
         else:
             size = 18
 
-        self.lbl_operation_hint.setFont(QFont("Arial", size, QFont.Bold))
+        self._fit_operation_hint_font(text, start_size=size)
 
     def _maybe_speak_operation_hint(self, text: str, hint_source: Optional[str] = None, speech_text: Optional[str] = None):
         if not self.voice_prompt_enabled:
@@ -1473,6 +1694,9 @@ class MainWindow(QMainWindow):
 
         if self._skip_hint_speech_once:
             self._skip_hint_speech_once = False
+            return
+
+        if hint_source == 'prestart' and getattr(self, '_suppress_prestart_speech', False):
             return
 
         raw_text = (speech_text if speech_text is not None else text or "").strip()
@@ -1727,6 +1951,7 @@ class MainWindow(QMainWindow):
             current_task_id = None
             if self.system.task_manager.current_monitor:
                 current_task_id = getattr(self.system.task_manager.current_monitor, 'task_id', None)
+            current_item = None
             for task in all_tasks:
                 task_id = task.get('task_id', '')
                 state = task.get('state', 'pending')
@@ -1772,6 +1997,10 @@ class MainWindow(QMainWindow):
                     item.setSizeHint(item.sizeHint().expandedTo(card_widget.minimumSizeHint()))
                 self.list_queue.addItem(item)
                 self.list_queue.setItemWidget(item, card_widget)
+                if is_current_task:
+                    current_item = item
+            if current_item is not None:
+                self.list_queue.scrollToItem(current_item, QListWidget.PositionAtCenter)
             return
         
         self.tree_queue.clear()
@@ -1855,11 +2084,12 @@ class MainWindow(QMainWindow):
             border = "1px solid #d9e2ec"
 
         card = QFrame()
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         card.setStyleSheet(
             f"QFrame {{ background: {bg}; border: {border}; border-radius: 12px; }}"
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
 
         lbl_state = QLabel(display_state)
@@ -1883,6 +2113,7 @@ class MainWindow(QMainWindow):
         score_text = "--" if completion_score is None else f"{float(completion_score):.1f}"
         lbl_meta = QLabel(f"任务ID: {task_id}    圈数: {laps_comp}/{req_laps}    评分: {score_text}")
         lbl_meta.setFont(QFont("Arial", 11))
+        lbl_meta.setWordWrap(True)
         lbl_meta.setStyleSheet(f"color: {body_color}; border: none;")
         layout.addWidget(lbl_meta)
 
